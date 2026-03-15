@@ -1,10 +1,31 @@
 <?php
 /**
- * FANTASY FC - ARQUITETURA SINGLE-FILE PHP COM AUTENTICAÇÃO
- * Marcos, aqui simulamos um Front Controller. 
- * O fluxo é: POST (ações de form) -> Processa -> Redireciona via GET (Páginas)
+ * FANTASY FC - ARQUITETURA SINGLE-FILE PHP COM AUTENTICAÇÃO E BANCO (PDO)
  */
 session_start();
+
+// ------------------------------------------------------------------
+// 0. CONEXÃO COM O BANCO DE DADOS (MariaDB / MySQL)
+// ------------------------------------------------------------------
+$db_host = 'localhost'; // Padrão Hostinger/cPanel
+$db_name = 'u289267434_futfantasy';
+$db_user = 'u289267434_futfantasy';
+$db_pass = 'Tu#@EX/K>&=2';
+
+$pdo = null;
+$db_connected = false;
+
+try {
+    // Configura o PDO para lançar Exceptions em caso de erro e usar UTF-8
+    $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $db_connected = true;
+} catch (PDOException $e) {
+    // Para nosso protótipo não quebrar se a tabela não existir, engolimos o erro temporariamente.
+    // Em produção, você logaria isso: error_log($e->getMessage());
+    $db_connected = false;
+}
 
 // ------------------------------------------------------------------
 // 1. CONTROLADOR DE REQUISIÇÕES (Lógica de Backend)
@@ -22,7 +43,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = $_POST['email'] ?? '';
         $senha = $_POST['senha'] ?? '';
         
-        // Simulação: Cadastro feito com sucesso
+        if ($db_connected) {
+            // Exemplo REAL de como você faria o insert:
+            /*
+            $hash = password_hash($senha, PASSWORD_DEFAULT);
+            $stmt = $pdo->prepare("INSERT INTO gm (nome, nome_do_time, email, senha) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$nome, $time, $email, $hash]);
+            */
+        }
+        
         header("Location: ?page=login&msg=registered");
         exit;
     }
@@ -32,10 +61,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = $_POST['email'] ?? '';
         $senha = $_POST['senha'] ?? '';
         
-        // Simulação: Aceita qualquer login que não seja vazio
         if (!empty($email) && !empty($senha)) {
+            // Exemplo REAL (Descomente quando tiver as tabelas):
+            /*
+            $stmt = $pdo->prepare("SELECT id, nome_do_time, senha FROM gm WHERE email = ?");
+            $stmt->execute([$email]);
+            $gm = $stmt->fetch();
+            if ($gm && password_verify($senha, $gm['senha'])) {
+                $_SESSION['logged_in'] = true;
+                $_SESSION['gm_name'] = $gm['nome_do_time'];
+                header("Location: ?page=app");
+                exit;
+            } else { ... erro ... }
+            */
+
+            // Fluxo Simulado
             $_SESSION['logged_in'] = true;
-            $_SESSION['gm_name'] = "Marcos Medeiros"; // Viria do BD
+            $_SESSION['gm_name'] = "Marcos Medeiros";
             header("Location: ?page=app");
             exit;
         } else {
@@ -46,7 +88,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // C. RECUPERAÇÃO DE SENHA
     if ($action === 'forgot') {
-        $email = $_POST['email'] ?? '';
         header("Location: ?page=login&msg=reset_sent");
         exit;
     }
@@ -59,15 +100,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Mensagens de Sucesso vindas por GET
+// Mensagens vindas por GET
 if (isset($_GET['msg'])) {
-    if ($_GET['msg'] === 'registered') {
-        $msg = "Conta criada! Verifique seu e-mail para validar o cadastro.";
-        $msgType = "success";
-    } elseif ($_GET['msg'] === 'reset_sent') {
-        $msg = "Se o e-mail existir, um link de recuperação foi enviado.";
-        $msgType = "success";
-    }
+    if ($_GET['msg'] === 'registered') { $msg = "Conta criada! Faça o login."; $msgType = "success"; }
+    elseif ($_GET['msg'] === 'reset_sent') { $msg = "Link de recuperação enviado."; $msgType = "success"; }
 }
 
 // ------------------------------------------------------------------
@@ -75,38 +111,44 @@ if (isset($_GET['msg'])) {
 // ------------------------------------------------------------------
 $page = $_GET['page'] ?? 'login';
 
-// Proteção de Rota (Guards)
-if ($page === 'app' && !isset($_SESSION['logged_in'])) {
-    header("Location: ?page=login");
-    exit;
-}
-if (in_array($page, ['login', 'register', 'forgot']) && isset($_SESSION['logged_in'])) {
-    header("Location: ?page=app");
-    exit;
-}
+if ($page === 'app' && !isset($_SESSION['logged_in'])) { header("Location: ?page=login"); exit; }
+if (in_array($page, ['login', 'register', 'forgot']) && isset($_SESSION['logged_in'])) { header("Location: ?page=app"); exit; }
 
 // ------------------------------------------------------------------
-// 3. DADOS DO APP (Carregados apenas se a página for o app)
+// 3. DADOS DO APP (Hydration)
 // ------------------------------------------------------------------
 $app_data = [];
 if ($page === 'app') {
-    $sprint_atual = 1;
-    $max_sprints = 15;
-    $formacoes_eafc26 = ['4-4-2', '4-3-3', '4-2-3-1', '3-5-2', '5-3-2'];
-    $gms = [];
-    for ($i = 1; $i <= 20; $i++) {
-        $gms[] = ['id' => $i, 'name' => "GM " . $i, 'teamName' => "Time Fantasy " . $i, 'points' => rand(10, 50)];
+    // Se o banco estiver conectado, busque de verdade. Se não, use o Mock.
+    if ($db_connected) {
+        // $gms = $pdo->query("SELECT id, nome as name, nome_do_time as teamName, pontos as points FROM gm")->fetchAll();
+        // $players = $pdo->query("SELECT * FROM jogador")->fetchAll();
     }
+
+    // Dados base para o protótipo funcionar
+    $formacoes_eafc26 = ['4-3-3', '4-4-2', '4-2-3-1', '3-5-2', '5-3-2'];
+    $gms = [];
+    for ($i = 1; $i <= 20; $i++) { $gms[] = ['id' => $i, 'name' => "GM " . $i, 'teamName' => "Time Fantasy " . $i, 'points' => rand(10, 50)]; }
     $players = [
-        ['id' => 1, 'name' => 'Vini Jr.', 'pos' => 'ATA', 'realTeam' => 'Real Madrid', 'league' => 'La Liga', 'ovr' => 90],
-        ['id' => 2, 'name' => 'Haaland', 'pos' => 'ATA', 'realTeam' => 'Man. City', 'league' => 'Premier League', 'ovr' => 91],
-        ['id' => 3, 'name' => 'Bellingham', 'pos' => 'MEI', 'realTeam' => 'Real Madrid', 'league' => 'La Liga', 'ovr' => 89],
-        ['id' => 4, 'name' => 'Mbappé', 'pos' => 'ATA', 'realTeam' => 'Real Madrid', 'league' => 'La Liga', 'ovr' => 91],
-        ['id' => 5, 'name' => 'De Bruyne', 'pos' => 'MEI', 'realTeam' => 'Man. City', 'league' => 'Premier League', 'ovr' => 90],
-        ['id' => 6, 'name' => 'Van Dijk', 'pos' => 'ZAG', 'realTeam' => 'Liverpool', 'league' => 'Premier League', 'ovr' => 89],
-        ['id' => 7, 'name' => 'Alisson', 'pos' => 'GOL', 'realTeam' => 'Liverpool', 'league' => 'Premier League', 'ovr' => 89],
+        ['id' => 7, 'name' => 'Alisson', 'pos' => 'GOL', 'realTeam' => 'Liverpool', 'ovr' => 89], // O primeiro é sempre goleiro na lógica do campo
+        ['id' => 6, 'name' => 'Van Dijk', 'pos' => 'ZAG', 'realTeam' => 'Liverpool', 'ovr' => 89],
+        ['id' => 15, 'name' => 'Araújo', 'pos' => 'ZAG', 'realTeam' => 'Barcelona', 'ovr' => 86],
+        ['id' => 18, 'name' => 'Hakimi', 'pos' => 'LD', 'realTeam' => 'PSG', 'ovr' => 84],
+        ['id' => 19, 'name' => 'Davies', 'pos' => 'LE', 'realTeam' => 'Bayern', 'ovr' => 84],
+        ['id' => 8, 'name' => 'Rodri', 'pos' => 'VOL', 'realTeam' => 'Man. City', 'ovr' => 90],
+        ['id' => 5, 'name' => 'De Bruyne', 'pos' => 'MEI', 'realTeam' => 'Man. City', 'ovr' => 90],
+        ['id' => 3, 'name' => 'Bellingham', 'pos' => 'MEI', 'realTeam' => 'Real Madrid', 'ovr' => 89],
+        ['id' => 1, 'name' => 'Vini Jr.', 'pos' => 'PE', 'realTeam' => 'Real Madrid', 'ovr' => 90],
+        ['id' => 9, 'name' => 'Salah', 'pos' => 'PD', 'realTeam' => 'Liverpool', 'ovr' => 89],
+        ['id' => 2, 'name' => 'Haaland', 'pos' => 'ATA', 'realTeam' => 'Man. City', 'ovr' => 91],
+        // Banco
+        ['id' => 10, 'name' => 'Ederson', 'pos' => 'GOL', 'realTeam' => 'Man. City', 'ovr' => 88],
+        ['id' => 4, 'name' => 'Mbappé', 'pos' => 'ATA', 'realTeam' => 'Real Madrid', 'ovr' => 91],
+        ['id' => 11, 'name' => 'Saka', 'pos' => 'MD', 'realTeam' => 'Arsenal', 'ovr' => 87],
+        ['id' => 12, 'name' => 'Musiala', 'pos' => 'MEI', 'realTeam' => 'Bayern', 'ovr' => 87],
+        ['id' => 13, 'name' => 'Leão', 'pos' => 'PE', 'realTeam' => 'Milan', 'ovr' => 86],
     ];
-    $app_data = ['sprint' => $sprint_atual, 'max_sprints' => $max_sprints, 'gms' => $gms, 'players' => $players, 'formations' => $formacoes_eafc26];
+    $app_data = ['sprint' => 1, 'max_sprints' => 15, 'gms' => $gms, 'players' => $players, 'formations' => $formacoes_eafc26, 'db_status' => $db_connected];
 }
 ?>
 
@@ -126,24 +168,25 @@ if ($page === 'app') {
         .tab-content { display: none; }
         .tab-content.active { display: block; animation: fadeIn 0.3s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        /* Impede scroll no body quando o menu mobile está aberto */
         body.menu-open { overflow: hidden; }
+        
+        /* Estilos do Campo de Futebol */
+        .pitch-pattern {
+            background-color: #065f46;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 10%, rgba(255,255,255,0.05) 10%, rgba(255,255,255,0.05) 20%);
+        }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-100 font-sans antialiased h-screen w-full overflow-hidden flex flex-col md:flex-row">
 
 <?php if ($page === 'login' || $page === 'register' || $page === 'forgot'): ?>
-    <!-- ========================================== -->
-    <!-- TELA DE AUTENTICAÇÃO (RESPONSIVA)          -->
-    <!-- ========================================== -->
+    <!-- TELA DE AUTENTICAÇÃO -->
     <div class="flex-1 flex items-center justify-center p-4 md:p-8 overflow-y-auto">
         <div class="w-full max-w-md bg-slate-800/80 backdrop-blur-md p-6 md:p-8 rounded-2xl border border-slate-700 shadow-2xl relative overflow-hidden">
             <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-emerald-400 to-cyan-500"></div>
             
             <div class="text-center mb-8 mt-2">
-                <h1 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-500 tracking-tight">
-                    FANTASY FC
-                </h1>
+                <h1 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-500 tracking-tight">FANTASY FC</h1>
                 <p class="text-slate-400 text-xs md:text-sm mt-1 uppercase tracking-widest">Sprint Manager</p>
             </div>
 
@@ -167,93 +210,50 @@ if ($page === 'app') {
                         </div>
                         <input type="password" name="senha" required class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" placeholder="••••••••">
                     </div>
-                    <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold py-3.5 px-4 rounded-xl transition shadow-lg shadow-emerald-900/20 mt-2">
-                        ENTRAR NO JOGO
-                    </button>
+                    <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold py-3.5 px-4 rounded-xl transition shadow-lg shadow-emerald-900/20 mt-2">ENTRAR NO JOGO</button>
                 </form>
                 <div class="text-center mt-8">
                     <p class="text-slate-400 text-sm">Não é um GM ainda? <a href="?page=register" class="text-emerald-500 font-bold hover:text-emerald-400 transition ml-1">Criar franquia</a></p>
                 </div>
-
             <?php elseif ($page === 'register'): ?>
+                <!-- Cadastro Omitido por brevidade no Protótipo visual -->
                 <form action="index.php" method="POST" class="space-y-4">
                     <input type="hidden" name="action" value="register">
-                    <div>
-                        <label class="block text-slate-400 text-xs font-bold mb-2 ml-1">NOME DO GM (SEU NOME)</label>
-                        <input type="text" name="nome" required class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition" placeholder="Ex: Marcos Medeiros">
-                    </div>
-                    <div>
-                        <label class="block text-slate-400 text-xs font-bold mb-2 ml-1">NOME DA FRANQUIA (TIME)</label>
-                        <input type="text" name="time" required class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition" placeholder="Ex: Inter de Milão">
-                    </div>
-                    <div>
-                        <label class="block text-slate-400 text-xs font-bold mb-2 ml-1">E-MAIL</label>
-                        <input type="email" name="email" required class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition" placeholder="seu@email.com">
-                    </div>
-                    <div>
-                        <label class="block text-slate-400 text-xs font-bold mb-2 ml-1">SENHA</label>
-                        <input type="password" name="senha" required minlength="6" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition" placeholder="Crie uma senha forte">
-                    </div>
-                    <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl transition shadow-lg shadow-emerald-900/20 mt-2">
-                        FINALIZAR CADASTRO
-                    </button>
+                    <input type="text" name="nome" required class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition" placeholder="Nome Completo">
+                    <input type="email" name="email" required class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition" placeholder="E-mail">
+                    <input type="password" name="senha" required class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition" placeholder="Senha">
+                    <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl transition mt-2">FINALIZAR CADASTRO</button>
                 </form>
-                <div class="text-center mt-6">
-                    <p class="text-slate-400 text-sm"><a href="?page=login" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-arrow-left mr-2"></i> Voltar ao Login</a></p>
-                </div>
-
+                <div class="text-center mt-6"><a href="?page=login" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-arrow-left mr-2"></i> Voltar</a></div>
             <?php elseif ($page === 'forgot'): ?>
                 <form action="index.php" method="POST" class="space-y-5">
                     <input type="hidden" name="action" value="forgot">
-                    <p class="text-slate-400 text-sm text-center mb-6 leading-relaxed">Digite o e-mail cadastrado. Enviaremos um link de acesso seguro para redefinir a senha do seu GM.</p>
-                    <div>
-                        <label class="block text-slate-400 text-xs font-bold mb-2 ml-1">E-MAIL CADASTRADO</label>
-                        <input type="email" name="email" required class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition" placeholder="seu@email.com">
-                    </div>
-                    <button type="submit" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3.5 px-4 rounded-xl transition mt-2">
-                        ENVIAR LINK DE RECUPERAÇÃO
-                    </button>
+                    <input type="email" name="email" required class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition" placeholder="E-mail Cadastrado">
+                    <button type="submit" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3.5 px-4 rounded-xl transition mt-2">RECUPERAR</button>
                 </form>
-                <div class="text-center mt-6">
-                    <p class="text-slate-400 text-sm"><a href="?page=login" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-arrow-left mr-2"></i> Voltar ao Login</a></p>
-                </div>
+                <div class="text-center mt-6"><a href="?page=login" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-arrow-left mr-2"></i> Voltar</a></div>
             <?php endif; ?>
         </div>
     </div>
 
 <?php elseif ($page === 'app'): ?>
-    <!-- ========================================== -->
-    <!-- APLICAÇÃO PRINCIPAL (SÓ VÊ SE LOGADO)      -->
-    <!-- ========================================== -->
-
-    <!-- MOBILE HEADER (Aparece apenas no celular) -->
+    <!-- MOBILE HEADER -->
     <header class="md:hidden flex-none bg-slate-950 border-b border-slate-800 p-4 flex justify-between items-center z-40 relative">
-        <h1 class="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-500 tracking-tight">
-            FANTASY FC
-        </h1>
-        <button id="mobile-menu-btn" class="text-slate-400 hover:text-white focus:outline-none p-2 rounded-lg bg-slate-900 border border-slate-800">
-            <i class="fa-solid fa-bars text-xl"></i>
-        </button>
+        <h1 class="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-500 tracking-tight">FANTASY FC</h1>
+        <button id="mobile-menu-btn" class="text-slate-400 hover:text-white focus:outline-none p-2 rounded-lg bg-slate-900 border border-slate-800"><i class="fa-solid fa-bars text-xl"></i></button>
     </header>
 
-    <!-- OVERLAY ESCURO (Fundo opaco quando o menu mobile está aberto) -->
     <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-40 hidden md:hidden transition-opacity"></div>
 
-    <!-- SIDEBAR RESPONSIVA -->
-    <!-- No Desktop: Fica na esquerda flexível. No Mobile: Fica escondida (translate-x-full) e sobrepõe a tela (absolute/z-50) -->
+    <!-- SIDEBAR -->
     <aside id="sidebar" class="w-64 bg-slate-950 border-r border-slate-800 flex flex-col justify-between absolute md:relative inset-y-0 left-0 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out z-50 h-full">
         <div class="flex-1 overflow-y-auto">
             <div class="p-6 border-b border-slate-800 flex justify-between items-center">
                 <div>
-                    <h1 class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-500 tracking-tight">
-                        FANTASY FC
-                    </h1>
+                    <h1 class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-500 tracking-tight">FANTASY FC</h1>
                     <p class="text-xs text-slate-500 mt-1">EAFC26 Sprint Manager</p>
                 </div>
-                <!-- Botão de fechar no mobile -->
-                <button id="close-menu-btn" class="md:hidden text-slate-500 hover:text-white">
-                    <i class="fa-solid fa-xmark text-2xl"></i>
-                </button>
+                <button id="close-menu-btn" class="md:hidden text-slate-500 hover:text-white"><i class="fa-solid fa-xmark text-2xl"></i></button>
             </div>
             
             <nav class="p-4 space-y-2" id="nav-menu">
@@ -277,12 +277,10 @@ if ($page === 'app') {
 
         <div class="p-4 border-t border-slate-800 bg-slate-950 shrink-0">
             <div class="flex items-center space-x-3 mb-4 p-2 bg-slate-900 rounded-xl border border-slate-800">
-                <div class="w-10 h-10 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-inner">
-                    GM
-                </div>
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-inner">GM</div>
                 <div class="flex-1 overflow-hidden">
                     <div class="text-sm font-bold text-white truncate"><?php echo $_SESSION['gm_name'] ?? 'Usuário'; ?></div>
-                    <div class="text-xs text-emerald-500 flex items-center"><span class="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span> Online</div>
+                    <div class="text-[10px] text-emerald-500 flex items-center"><span class="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span> Online (DB: <span id="db-status-badge"></span>)</div>
                 </div>
             </div>
             <form action="index.php" method="POST">
@@ -294,17 +292,14 @@ if ($page === 'app') {
         </div>
     </aside>
 
-    <!-- MAIN CONTENT DO APP -->
     <main class="flex-1 overflow-y-auto bg-slate-900 w-full relative z-0">
         <div class="max-w-6xl mx-auto p-4 md:p-8">
             
-            <!-- HEADER GERAL -->
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 bg-slate-800/80 p-4 md:p-5 rounded-2xl border border-slate-700 backdrop-blur-sm shadow-sm gap-4">
                 <div>
                     <h2 class="text-slate-400 text-xs uppercase tracking-wider font-bold mb-1">Status da Simulação</h2>
                     <div class="text-lg md:text-xl font-bold text-white flex items-center">
-                        <i class="fa-solid fa-calendar-days mr-2 text-emerald-500"></i> Sprint Atual: 
-                        <span id="sprint-display" class="ml-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-lg text-sm md:text-base"></span>
+                        <i class="fa-solid fa-calendar-days mr-2 text-emerald-500"></i> Sprint Atual: <span id="sprint-display" class="ml-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-lg text-sm md:text-base"></span>
                     </div>
                 </div>
                 <div class="text-left md:text-right w-full md:w-auto">
@@ -313,7 +308,6 @@ if ($page === 'app') {
                 </div>
             </div>
 
-            <!-- TABS DO JOGO -->
             <!-- RANKING -->
             <section id="tab-ranking" class="tab-content active">
                 <div class="bg-slate-800 rounded-2xl p-4 md:p-6 shadow-xl border border-slate-700">
@@ -333,23 +327,36 @@ if ($page === 'app') {
                 </div>
             </section>
 
-            <!-- MEU ELENCO -->
+            <!-- MEU ELENCO & CAMPINHO -->
             <section id="tab-team" class="tab-content">
                 <div class="bg-slate-800 rounded-2xl p-4 md:p-6 shadow-xl border border-slate-700">
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                        <h2 class="text-xl md:text-2xl font-bold text-white flex items-center"><i class="fa-solid fa-tshirt mr-3 text-blue-400"></i> Gestão do Elenco</h2>
-                        <div class="bg-slate-900 border border-slate-700 rounded-lg p-2 flex items-center w-full sm:w-auto">
-                            <i class="fa-solid fa-chess-board text-slate-500 ml-2 mr-2"></i>
-                            <select class="bg-transparent text-white focus:outline-none text-sm font-bold w-full">
-                                <option>4-3-3 Ofensivo</option>
-                                <option>4-4-2 Clássico</option>
-                                <option>3-5-2</option>
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 border-b border-slate-700 pb-4">
+                        <h2 class="text-xl md:text-2xl font-bold text-white flex items-center"><i class="fa-solid fa-tshirt mr-3 text-blue-400"></i> Meu Elenco / Escalação</h2>
+                        <div class="bg-slate-900 border border-slate-600 rounded-lg p-2 flex items-center w-full sm:w-auto shadow-inner">
+                            <i class="fa-solid fa-chess-board text-emerald-400 ml-2 mr-2"></i>
+                            <select id="formation-select" onchange="renderPitch()" class="bg-transparent text-white focus:outline-none text-sm font-bold w-full cursor-pointer appearance-none">
+                                <!-- Preenchido pelo JS -->
                             </select>
+                            <i class="fa-solid fa-chevron-down text-slate-500 text-xs mr-2 ml-2 pointer-events-none"></i>
                         </div>
                     </div>
                     
-                    <h3 class="text-emerald-400 font-bold mb-4 text-sm uppercase tracking-wider border-b border-slate-700 pb-2"><i class="fa-regular fa-circle-check mr-1"></i> Titulares</h3>
-                    <div id="starters-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4"></div>
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <!-- O CAMPINHO DE FUTEBOL -->
+                        <div class="lg:col-span-2 flex justify-center">
+                            <div id="pitch-container" class="relative w-full max-w-lg aspect-[3/4] pitch-pattern rounded-lg border-4 border-white overflow-hidden shadow-2xl">
+                                <!-- Linhas SVG simuladas via CSS no JS -->
+                            </div>
+                        </div>
+
+                        <!-- BANCO DE RESERVAS -->
+                        <div class="bg-slate-900 rounded-xl p-4 border border-slate-700 h-fit">
+                            <h3 class="text-slate-400 font-bold mb-4 text-sm uppercase tracking-wider flex items-center"><i class="fa-solid fa-chair mr-2"></i> Banco de Reservas</h3>
+                            <div id="bench-list" class="space-y-3">
+                                <!-- Preenchido pelo JS -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -357,15 +364,11 @@ if ($page === 'app') {
             <section id="tab-draft" class="tab-content">
                 <div class="bg-slate-800 rounded-2xl p-4 md:p-6 shadow-xl border border-slate-700">
                     <div class="text-center mb-8 bg-slate-900 p-6 md:p-8 rounded-2xl border border-emerald-900/50 relative overflow-hidden">
-                        <div class="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
                         <h2 class="text-2xl md:text-4xl font-black text-white mb-2 uppercase tracking-wide relative z-10">Draft Room</h2>
-                        <p class="text-slate-400 text-sm mb-6 relative z-10">Sistema Snake (Ida e Volta)</p>
-                        <div class="inline-flex items-center bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-6 py-3 rounded-xl text-base md:text-lg font-bold shadow-[0_0_15px_rgba(16,185,129,0.15)] relative z-10">
+                        <div class="inline-flex items-center bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-6 py-3 rounded-xl text-base md:text-lg font-bold mt-4 shadow-[0_0_15px_rgba(16,185,129,0.15)] relative z-10">
                             <i class="fa-solid fa-stopwatch mr-3 animate-pulse"></i> Sua vez de escolher!
                         </div>
                     </div>
-
-                    <h3 class="text-slate-300 font-bold mb-4 text-lg"><i class="fa-solid fa-list mr-2"></i> Jogadores Disponíveis</h3>
                     <div id="draft-players-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 text-left"></div>
                 </div>
             </section>
@@ -377,7 +380,7 @@ if ($page === 'app') {
                         <i class="fa-solid fa-money-bill-transfer text-4xl text-slate-500"></i>
                     </div>
                     <h2 class="text-2xl font-bold text-white mb-3">Central de Negócios</h2>
-                    <p class="text-slate-400 max-w-md mx-auto text-sm leading-relaxed">Área reservada para Leilões e Trocas (Trades) entre os GMs. Será destrancada após a finalização do Draft Inicial.</p>
+                    <p class="text-slate-400 max-w-md mx-auto text-sm leading-relaxed">Em breve.</p>
                 </div>
             </section>
 
@@ -399,129 +402,182 @@ if ($page === 'app') {
         </div>
     </main>
 
-    <!-- MOTOR JAVASCRIPT REAPROVEITADO E ADAPTADO PARA MOBILE -->
     <script>
         const appState = <?php echo json_encode($app_data); ?>;
         
-        // --- CONTROLE DO MENU MOBILE ---
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('sidebar-overlay');
-        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-        const closeMenuBtn = document.getElementById('close-menu-btn');
+        // --- MAPA DE FORMAÇÕES DO CAMPINHO (Defesa, Meio, Ataque) ---
+        const formationMap = {
+            '4-4-2': [4, 4, 2],
+            '4-3-3': [4, 3, 3],
+            '4-2-3-1': [4, 5, 1], // Simplificando linhas pro flexbox
+            '3-5-2': [3, 5, 2],
+            '5-3-2': [5, 3, 2]
+        };
 
-        function toggleMobileMenu() {
-            const isClosed = sidebar.classList.contains('-translate-x-full');
-            if (isClosed) {
-                sidebar.classList.remove('-translate-x-full');
-                overlay.classList.remove('hidden');
-                document.body.classList.add('menu-open'); // Impede scroll
-            } else {
-                sidebar.classList.add('-translate-x-full');
-                overlay.classList.add('hidden');
-                document.body.classList.remove('menu-open');
-            }
-        }
-
-        if(mobileMenuBtn) mobileMenuBtn.addEventListener('click', toggleMobileMenu);
-        if(closeMenuBtn) closeMenuBtn.addEventListener('click', toggleMobileMenu);
-        if(overlay) overlay.addEventListener('click', toggleMobileMenu);
-
-        // --- INICIALIZAÇÃO DO APP ---
+        // --- INICIALIZAÇÃO ---
         document.addEventListener('DOMContentLoaded', () => {
             if(appState && appState.sprint) {
                 document.getElementById('sprint-display').innerText = `${appState.sprint} / ${appState.max_sprints}`;
+                document.getElementById('db-status-badge').innerText = appState.db_status ? 'ON' : 'OFF';
+                document.getElementById('db-status-badge').className = appState.db_status ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold';
+                
+                // Popula select de formações
+                const select = document.getElementById('formation-select');
+                select.innerHTML = appState.formations.map(f => `<option value="${f}">${f}</option>`).join('');
+                
                 renderRanking();
-                renderMyTeam();
+                renderPitch(); // Renderiza o Campinho
+                renderBench(); // Renderiza os Reservas
                 renderDraft();
                 renderAdminPanel();
             }
         });
 
+        // Controle Menu/Abas
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        function toggleMobileMenu() {
+            sidebar.classList.toggle('-translate-x-full');
+            overlay.classList.toggle('hidden');
+            document.body.classList.toggle('menu-open');
+        }
+        document.getElementById('mobile-menu-btn')?.addEventListener('click', toggleMobileMenu);
+        document.getElementById('close-menu-btn')?.addEventListener('click', toggleMobileMenu);
+        overlay?.addEventListener('click', toggleMobileMenu);
+
         function switchTab(tabId) {
-            // Alterna o conteúdo
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.getElementById(`tab-${tabId}`).classList.add('active');
             
-            // Alterna os botões do menu
             document.querySelectorAll('.nav-btn').forEach(btn => {
                 btn.className = 'nav-btn w-full flex items-center px-4 py-3.5 text-sm font-medium rounded-xl text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition';
             });
             const activeBtn = document.querySelector(`.nav-btn[data-target="${tabId}"]`);
-            if (activeBtn) {
-                activeBtn.className = tabId === 'admin' 
+            if (activeBtn) activeBtn.className = tabId === 'admin' 
                     ? 'nav-btn w-full flex items-center px-4 py-3.5 text-sm font-medium rounded-xl bg-red-900/20 text-red-400 mt-6 border border-red-500/30' 
                     : 'nav-btn w-full flex items-center px-4 py-3.5 text-sm font-medium rounded-xl bg-emerald-900/30 text-emerald-400 border border-emerald-500/50';
-            }
 
-            // Fecha o menu mobile se estiver aberto (UX Padrão)
-            if (window.innerWidth < 768 && sidebar && !sidebar.classList.contains('-translate-x-full')) {
-                toggleMobileMenu();
-            }
+            if (window.innerWidth < 768 && !sidebar.classList.contains('-translate-x-full')) toggleMobileMenu();
         }
 
-        // --- FUNÇÕES DE RENDERIZAÇÃO MELHORADAS VISUALMENTE ---
+        // --- RENDERIZAÇÃO DO CAMPINHO (A MÁGICA) ---
+        function renderPitch() {
+            const formation = document.getElementById('formation-select').value;
+            const structure = formationMap[formation] || [4, 3, 3]; // Default
+            
+            // Assume 1 Goleiro e 10 de linha
+            const starters = appState.players.slice(0, 11);
+            const gk = starters[0]; // Goleiro é sempre o índice 0 no nosso mock
+            const outfield = starters.slice(1);
+            
+            // Separa os jogadores nas linhas (Defesa -> Meio -> Ataque)
+            // Para desenhar visualmente, vamos do Ataque para a Defesa (top to bottom)
+            let rows = [];
+            let index = 0;
+            structure.forEach(count => {
+                rows.push(outfield.slice(index, index + count));
+                index += count;
+            });
+            rows.reverse(); // Inverte para renderizar o ataque no topo do HTML
+
+            // HTML Base do Campo
+            let html = `
+                <!-- Elementos visuais do campo (linhas) -->
+                <div class="absolute inset-0 border border-white/40 m-2"></div>
+                <div class="absolute top-1/2 left-0 w-full border-t border-white/40 transform -translate-y-1/2"></div>
+                <div class="absolute top-1/2 left-1/2 w-24 h-24 border border-white/40 rounded-full transform -translate-x-1/2 -translate-y-1/2"></div>
+                <!-- Áreas -->
+                <div class="absolute bottom-2 left-1/2 w-40 h-20 border border-white/40 transform -translate-x-1/2 border-b-0"></div>
+                <div class="absolute bottom-22 left-1/2 w-16 h-8 border border-white/40 rounded-t-full transform -translate-x-1/2 border-b-0 opacity-50"></div>
+                
+                <div class="absolute top-2 left-1/2 w-40 h-20 border border-white/40 transform -translate-x-1/2 border-t-0"></div>
+                
+                <!-- Container de Jogadores -->
+                <div class="absolute inset-0 flex flex-col justify-between py-6 px-4 z-10">
+            `;
+
+            // Renderiza Linhas (Ataque -> Meio -> Defesa)
+            rows.forEach(row => {
+                html += `<div class="flex justify-around items-center w-full">`;
+                row.forEach(p => { html += createPlayerNode(p); });
+                html += `</div>`;
+            });
+
+            // Renderiza Goleiro (Bottom)
+            html += `<div class="flex justify-center items-center w-full mt-4">`;
+            html += createPlayerNode(gk, true);
+            html += `</div></div>`;
+
+            document.getElementById('pitch-container').innerHTML = html;
+        }
+
+        // Criar a carta redondinha do jogador no campo
+        function createPlayerNode(p, isGk = false) {
+            if(!p) return `<div class="w-10 h-10"></div>`; // Placeholder se faltar jogador
+            
+            // Define cor baseado no Overall (OVR)
+            let ovrColor = 'bg-emerald-500';
+            if(p.ovr >= 90) ovrColor = 'bg-yellow-500 text-black';
+            else if(p.ovr < 85) ovrColor = 'bg-blue-500';
+            
+            if(isGk) ovrColor = 'bg-slate-300 text-black';
+
+            return `
+                <div class="flex flex-col items-center group cursor-pointer transform hover:scale-110 transition duration-200">
+                    <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full ${ovrColor} border-2 border-white flex items-center justify-center shadow-lg relative">
+                        <span class="font-black text-sm sm:text-base drop-shadow-md">${p.ovr}</span>
+                        <div class="absolute -top-2 -right-2 bg-slate-900 border border-slate-600 text-white text-[9px] px-1 rounded font-bold">${p.pos}</div>
+                    </div>
+                    <div class="bg-slate-900/90 backdrop-blur border border-slate-600 px-2 py-0.5 rounded text-[10px] sm:text-xs text-white font-bold mt-1 text-center truncate max-w-[70px] shadow-lg">
+                        ${p.name.split(' ')[0]}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderBench() {
+            const bench = appState.players.slice(11);
+            document.getElementById('bench-list').innerHTML = bench.map(p => `
+                <div class="bg-slate-800 p-3 rounded-lg flex justify-between items-center border border-slate-700 hover:border-slate-500 transition cursor-pointer">
+                    <div class="flex items-center">
+                        <span class="text-[10px] bg-slate-900 text-slate-400 px-1.5 py-0.5 rounded font-bold w-8 text-center mr-2">${p.pos}</span>
+                        <div>
+                            <div class="text-white font-bold text-sm">${p.name}</div>
+                            <div class="text-[10px] text-slate-500 uppercase">${p.realTeam}</div>
+                        </div>
+                    </div>
+                    <div class="text-slate-300 font-black bg-slate-900 px-2 py-1 rounded text-sm">${p.ovr}</div>
+                </div>
+            `).join('');
+        }
+
         function renderRanking() {
             const sortedGMs = [...appState.gms].sort((a, b) => b.points - a.points);
             document.getElementById('ranking-body').innerHTML = sortedGMs.map((gm, i) => `
                 <tr class="border-b border-slate-700/50 hover:bg-slate-700/20 transition group">
                     <td class="px-4 py-4 font-black ${i === 0 ? 'text-yellow-400 text-lg' : 'text-slate-500'}">${i + 1}º</td>
-                    <td class="px-4 py-4">
-                        <div class="font-bold text-white">${gm.teamName}</div>
-                        <div class="text-[11px] text-slate-500 mt-0.5 uppercase tracking-wide"><i class="fa-solid fa-user mr-1"></i> ${gm.name}</div>
-                    </td>
-                    <td class="px-4 py-4 text-right">
-                        <span class="bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 text-emerald-400 font-mono font-bold text-base md:text-lg group-hover:border-emerald-500/50 transition">${gm.points}</span>
-                    </td>
+                    <td class="px-4 py-4"><div class="font-bold text-white">${gm.teamName}</div></td>
+                    <td class="px-4 py-4 text-right"><span class="bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 text-emerald-400 font-mono font-bold">${gm.points}</span></td>
                 </tr>`).join('');
-        }
-
-        function renderMyTeam() {
-            document.getElementById('starters-list').innerHTML = appState.players.slice(0, 11).map(p => `
-                <div class="bg-slate-900 p-3 md:p-4 rounded-xl border border-slate-700 flex justify-between items-center hover:border-slate-500 transition">
-                    <div class="flex items-center">
-                        <div class="w-10 h-10 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-black mr-3 ${p.pos === 'GOL' ? 'text-yellow-500' : 'text-slate-400'}">${p.pos}</div>
-                        <div>
-                            <div class="text-white font-bold text-sm md:text-base">${p.name}</div>
-                            <div class="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">${p.realTeam}</div>
-                        </div>
-                    </div>
-                    <div class="bg-emerald-900/20 border border-emerald-900/50 text-emerald-400 px-2 py-1 rounded text-sm md:text-base font-black">${p.ovr}</div>
-                </div>`).join('');
         }
 
         function renderDraft() {
             document.getElementById('draft-players-list').innerHTML = appState.players.map(p => `
-                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 flex justify-between items-center hover:border-emerald-500/50 transition group">
-                    <div>
-                        <div class="text-white font-bold flex items-center text-sm md:text-base">
-                            <span class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded mr-2 font-black">${p.pos}</span>
-                            ${p.name}
-                        </div>
-                        <div class="text-xs text-slate-500 mt-1">${p.realTeam} <span class="text-emerald-500 font-bold ml-1">OVR ${p.ovr}</span></div>
-                    </div>
-                    <button class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow shadow-emerald-900/50 md:opacity-0 group-hover:opacity-100">
-                        Draftar
-                    </button>
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 flex justify-between items-center">
+                    <div><span class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded mr-2">${p.pos}</span> <span class="text-white text-sm font-bold">${p.name}</span></div>
+                    <button class="bg-emerald-600 px-3 py-1.5 rounded-lg text-xs font-bold text-white">Draft</button>
                 </div>`).join('');
         }
 
         function renderAdminPanel() {
             document.getElementById('admin-points-list').innerHTML = appState.gms.map(gm => `
                 <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 flex flex-col justify-between">
-                    <div>
-                        <div class="text-white font-bold text-sm truncate mb-1" title="${gm.teamName}">${gm.teamName}</div>
-                        <div class="text-[10px] text-slate-500 uppercase tracking-wide mb-3">${gm.name}</div>
-                    </div>
-                    
-                    <div class="bg-slate-950 p-2 rounded-lg text-center border border-slate-800 mb-3">
-                        <span class="text-[10px] text-slate-500 uppercase font-bold">Total Sprint</span><br>
-                        <span class="text-2xl text-emerald-400 font-mono font-black">${gm.points}</span>
-                    </div>
-
+                    <div class="text-white font-bold text-sm truncate mb-3">${gm.teamName}</div>
+                    <div class="bg-slate-950 p-2 rounded-lg text-center mb-3 text-emerald-400 font-mono text-2xl">${gm.points}</div>
                     <div class="grid grid-cols-3 gap-1.5">
-                        <button class="bg-emerald-900/30 hover:bg-emerald-600 text-emerald-500 hover:text-white border border-emerald-500/30 py-2 rounded-lg text-xs font-bold transition">+3</button>
-                        <button class="bg-blue-900/30 hover:bg-blue-600 text-blue-500 hover:text-white border border-blue-500/30 py-2 rounded-lg text-xs font-bold transition">+1</button>
-                        <button class="bg-red-900/30 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/30 py-2 rounded-lg text-xs font-bold transition">-1</button>
+                        <button class="bg-emerald-900/30 text-emerald-500 py-2 rounded text-xs font-bold">+3</button>
+                        <button class="bg-blue-900/30 text-blue-500 py-2 rounded text-xs font-bold">+1</button>
+                        <button class="bg-red-900/30 text-red-500 py-2 rounded text-xs font-bold">-1</button>
                     </div>
                 </div>`).join('');
         }
