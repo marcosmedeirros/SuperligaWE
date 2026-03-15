@@ -28,7 +28,7 @@ function runMigrations($pdo) {
     );
     CREATE TABLE IF NOT EXISTS jogador (
         id INT AUTO_INCREMENT PRIMARY KEY, nome VARCHAR(100) NOT NULL, posicao VARCHAR(10) NOT NULL,
-        time_real VARCHAR(100) NOT NULL, overall INT NOT NULL, idade INT DEFAULT 25
+        overall INT NOT NULL, idade INT DEFAULT 25
     );
     CREATE TABLE IF NOT EXISTS elenco (
         id INT AUTO_INCREMENT PRIMARY KEY, gm_id INT NOT NULL, jogador_id INT NOT NULL, is_titular BOOLEAN DEFAULT FALSE,
@@ -50,6 +50,8 @@ function runMigrations($pdo) {
     
     // Patch update para adicionar a coluna idade se ela não existir (para quem já rodou o banco antes)
     try { $pdo->exec("ALTER TABLE jogador ADD COLUMN idade INT DEFAULT 25"); } catch (Exception $e) { /* Ignora se já existe */ }
+    // Patch update para remover coluna time_real se existir
+    try { $pdo->exec("ALTER TABLE jogador DROP COLUMN time_real"); } catch (Exception $e) { /* Ignora se nao existe */ }
 }
 
 function seedDatabaseIfNeeded($pdo) {
@@ -65,7 +67,7 @@ function seedDatabaseIfNeeded($pdo) {
         for ($gm_id = 1; $gm_id <= 20; $gm_id++) {
             foreach ($posicoes as $index => $pos) {
                 $ovr = rand(80, 93); $idade = rand(18, 35); $nome = "Jogador " . $jogador_id;
-                $pdo->exec("INSERT INTO jogador (nome, posicao, time_real, overall, idade) VALUES ('$nome', '$pos', 'Time XYZ', $ovr, $idade)");
+                $pdo->exec("INSERT INTO jogador (nome, posicao, overall, idade) VALUES ('$nome', '$pos', $ovr, $idade)");
                 $is_titular = ($index < 11) ? 1 : 0;
                 $pdo->exec("INSERT INTO elenco (gm_id, jogador_id, is_titular) VALUES ($gm_id, $jogador_id, $is_titular)");
                 $jogador_id++;
@@ -117,23 +119,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = !empty($_POST['jogador_id']) ? (int)$_POST['jogador_id'] : null;
         $nome = $_POST['nome'];
         $posicao = $_POST['posicao'];
-        $time_real = $_POST['time_real'];
         $overall = (int)$_POST['overall'];
         $idade = (int)$_POST['idade'];
         $gm_id = $_SESSION['gm_id'];
 
         if ($id) {
             // Update
-            $stmt = $pdo->prepare("UPDATE jogador j JOIN elenco e ON j.id = e.jogador_id SET j.nome=?, j.posicao=?, j.time_real=?, j.overall=?, j.idade=? WHERE j.id=? AND e.gm_id=?");
-            $stmt->execute([$nome, $posicao, $time_real, $overall, $idade, $id, $gm_id]);
+            $stmt = $pdo->prepare("UPDATE jogador j JOIN elenco e ON j.id = e.jogador_id SET j.nome=?, j.posicao=?, j.overall=?, j.idade=? WHERE j.id=? AND e.gm_id=?");
+            $stmt->execute([$nome, $posicao, $overall, $idade, $id, $gm_id]);
         } else {
             // Create
-            $stmt = $pdo->prepare("INSERT INTO jogador (nome, posicao, time_real, overall, idade) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$nome, $posicao, $time_real, $overall, $idade]);
+            $stmt = $pdo->prepare("INSERT INTO jogador (nome, posicao, overall, idade) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$nome, $posicao, $overall, $idade]);
             $novo_id = $pdo->lastInsertId();
             $pdo->prepare("INSERT INTO elenco (gm_id, jogador_id, is_titular) VALUES (?, ?, 0)")->execute([$gm_id, $novo_id]);
         }
-        header("Location: ?page=app&tab=team"); exit;
+        header("Location: ?page=app&tab=team&manage=1"); exit;
     }
 
     // SENIOR TIP: CRUD DE JOGADORES (Delete)
@@ -142,6 +143,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Garante que só deleta se for do próprio time
         $stmt = $pdo->prepare("DELETE j FROM jogador j JOIN elenco e ON j.id = e.jogador_id WHERE j.id = ? AND e.gm_id = ?");
         $stmt->execute([$id, $_SESSION['gm_id']]);
+        header("Location: ?page=app&tab=team&manage=1"); exit;
+    }
+
+    if ($action === 'atualizar_titulares' && $db_connected && isset($_SESSION['gm_id'])) {
+        $gm_id = $_SESSION['gm_id'];
+        $raw = $_POST['titulares'] ?? '';
+        $ids = array_filter(array_map('intval', explode(',', $raw)));
+        $ids = array_values(array_unique($ids));
+        $ids = array_slice($ids, 0, 11);
+
+        $valid_ids = [];
+        if (!empty($ids)) {
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $params = $ids;
+            array_unshift($params, $gm_id);
+            $stmt = $pdo->prepare("SELECT j.id FROM jogador j JOIN elenco e ON j.id = e.jogador_id WHERE e.gm_id = ? AND j.id IN ($placeholders)");
+            $stmt->execute($params);
+            $valid_ids = array_map(fn($r) => (int)$r['id'], $stmt->fetchAll());
+        }
+
+        $pdo->prepare("UPDATE elenco SET is_titular = 0 WHERE gm_id = ?")->execute([$gm_id]);
+        if (!empty($valid_ids)) {
+            $placeholders = implode(',', array_fill(0, count($valid_ids), '?'));
+            $params = $valid_ids;
+            array_unshift($params, $gm_id);
+            $pdo->prepare("UPDATE elenco SET is_titular = 1 WHERE gm_id = ? AND jogador_id IN ($placeholders)")->execute($params);
+        }
+
         header("Location: ?page=app&tab=team"); exit;
     }
 
@@ -179,12 +208,12 @@ if ($page === 'app') {
         $sprint_atual = $pdo->query("SELECT sprint_atual FROM config_sistema")->fetchColumn();
         $gms = $pdo->query("SELECT id, nome as name, nome_do_time as teamName, pontos as points, trade_count FROM gm ORDER BY pontos DESC")->fetchAll();
         
-        $stmt = $pdo->prepare("SELECT j.id, j.nome as name, j.posicao as pos, j.time_real as realTeam, j.overall as ovr, j.idade, e.is_titular FROM jogador j JOIN elenco e ON j.id = e.jogador_id WHERE e.gm_id = ? ORDER BY e.is_titular DESC, j.overall DESC");
+        $stmt = $pdo->prepare("SELECT j.id, j.nome as name, j.posicao as pos, j.overall as ovr, j.idade, e.is_titular FROM jogador j JOIN elenco e ON j.id = e.jogador_id WHERE e.gm_id = ? ORDER BY e.is_titular DESC, j.overall DESC");
         $stmt->execute([$gm_id_logado]);
         $players = $stmt->fetchAll();
 
         // Todos os jogadores do Database
-        $all_players = $pdo->query("SELECT j.id, j.nome as name, j.posicao as pos, j.time_real as realTeam, j.overall as ovr, j.idade, IFNULL(g.nome_do_time, 'Livre') as gm_dono FROM jogador j LEFT JOIN elenco e ON j.id = e.jogador_id LEFT JOIN gm g ON e.gm_id = g.id ORDER BY j.overall DESC")->fetchAll();
+        $all_players = $pdo->query("SELECT j.id, j.nome as name, j.posicao as pos, j.overall as ovr, j.idade, IFNULL(g.nome_do_time, 'Livre') as gm_dono FROM jogador j LEFT JOIN elenco e ON j.id = e.jogador_id LEFT JOIN gm g ON e.gm_id = g.id ORDER BY j.overall DESC")->fetchAll();
 
         $stmtCap = $pdo->prepare("SELECT SUM(overall) as top_8_sum FROM (SELECT j.overall FROM jogador j JOIN elenco e ON j.id = e.jogador_id WHERE e.gm_id = ? ORDER BY j.overall DESC LIMIT 8) as subquery");
         $stmtCap->execute([$gm_id_logado]);
@@ -375,15 +404,20 @@ if ($page === 'app') {
                 <?php endif; ?>
                 
                 <!-- VIEW 1: CAMPINHO -->
-                <div id="view-pitch" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div class="lg:col-span-2 flex justify-center">
-                        <div id="pitch-container" class="relative w-full max-w-lg aspect-[3/4] pitch-pattern rounded-lg border-4 border-white overflow-hidden shadow-2xl"></div>
+                <form id="lineup-form" action="index.php?page=app&tab=team" method="POST">
+                    <input type="hidden" name="action" value="atualizar_titulares">
+                    <input type="hidden" name="titulares" id="titulares-input" value="">
+                    <div id="view-pitch" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <div class="lg:col-span-2 flex justify-center">
+                            <div id="pitch-container" class="relative w-full max-w-lg aspect-[3/4] pitch-pattern rounded-lg border-4 border-white overflow-hidden shadow-2xl"></div>
+                        </div>
+                        <div class="bg-slate-900 rounded-xl p-4 border border-slate-700 h-fit">
+                            <h3 class="text-slate-400 font-bold mb-4 text-sm uppercase tracking-wider flex items-center"><i class="fa-solid fa-chair mr-2"></i> Banco</h3>
+                            <div id="bench-list" class="space-y-3"></div>
+                            <button type="submit" class="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-sm">Salvar Escalacao</button>
+                        </div>
                     </div>
-                    <div class="bg-slate-900 rounded-xl p-4 border border-slate-700 h-fit">
-                        <h3 class="text-slate-400 font-bold mb-4 text-sm uppercase tracking-wider flex items-center"><i class="fa-solid fa-chair mr-2"></i> Banco</h3>
-                        <div id="bench-list" class="space-y-3"></div>
-                    </div>
-                </div>
+                </form>
 
                 <!-- VIEW 2: GERENCIAMENTO (CRUD) -->
                 <div id="view-manage" class="hidden">
@@ -396,7 +430,7 @@ if ($page === 'app') {
                             <thead class="bg-slate-900/80 text-slate-400 uppercase text-xs">
                                 <tr>
                                     <th class="p-3 rounded-tl-lg">OVR</th><th class="p-3">Jogador</th><th class="p-3">Pos</th>
-                                    <th class="p-3">Idade</th><th class="p-3">Time Real</th><th class="p-3 rounded-tr-lg text-right">Ações</th>
+                                    <th class="p-3">Idade</th><th class="p-3 rounded-tr-lg text-right">Ações</th>
                                 </tr>
                             </thead>
                             <tbody id="crud-players-list"></tbody>
@@ -431,7 +465,6 @@ if ($page === 'app') {
                                 <th class="p-4">Nome</th>
                                 <th class="p-4 w-16">Pos</th>
                                 <th class="p-4 w-16">Idade</th>
-                                <th class="p-4 hidden sm:table-cell">Time Real</th>
                                 <th class="p-4 text-right">Franquia GM</th>
                             </tr>
                         </thead>
@@ -460,7 +493,7 @@ if ($page === 'app') {
             <button onclick="closePlayerModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <h2 class="text-xl font-bold text-white mb-6" id="modal-title">Novo Jogador</h2>
             
-            <form action="index.php?page=app&tab=team" method="POST" class="space-y-4">
+                <form action="index.php?page=app&tab=team&manage=1" method="POST" class="space-y-4">
                 <input type="hidden" name="action" value="salvar_jogador">
                 <input type="hidden" name="jogador_id" id="modal_id" value="">
                 
@@ -483,37 +516,9 @@ if ($page === 'app') {
                         <input type="number" name="overall" id="modal_ovr" required min="40" max="99" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white text-sm focus:border-emerald-500 focus:outline-none">
                     </div>
                 </div>
-                <div class="grid grid-cols-3 gap-4">
-                    <div class="col-span-2">
-                        <label class="block text-xs font-bold text-slate-400 mb-1">Time Real</label>
-                        <input type="text" name="time_real" id="modal_time" list="real-team-list" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white text-sm focus:border-emerald-500 focus:outline-none">
-                        <datalist id="real-team-list">
-                            <option value="Flamengo"></option>
-                            <option value="Corinthians"></option>
-                            <option value="Palmeiras"></option>
-                            <option value="Santos"></option>
-                            <option value="Sao Paulo"></option>
-                            <option value="Vasco"></option>
-                            <option value="Fluminense"></option>
-                            <option value="Gremio"></option>
-                            <option value="Internacional"></option>
-                            <option value="Cruzeiro"></option>
-                            <option value="Atletico-MG"></option>
-                            <option value="Bahia"></option>
-                            <option value="Botafogo"></option>
-                            <option value="Athletico-PR"></option>
-                            <option value="Fortaleza"></option>
-                            <option value="Ceara"></option>
-                            <option value="Sport"></option>
-                            <option value="Goias"></option>
-                            <option value="Coritiba"></option>
-                            <option value="America-MG"></option>
-                        </datalist>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-400 mb-1">Idade</label>
-                        <input type="number" name="idade" id="modal_idade" required min="15" max="45" value="25" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white text-sm focus:border-emerald-500 focus:outline-none">
-                    </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 mb-1">Idade</label>
+                    <input type="number" name="idade" id="modal_idade" required min="15" max="45" value="25" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white text-sm focus:border-emerald-500 focus:outline-none">
                 </div>
                 <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg mt-4 transition shadow-lg">Salvar Jogador</button>
             </form>
@@ -521,7 +526,7 @@ if ($page === 'app') {
     </div>
 
     <!-- MODAL DE DELETE INVISÍVEL PARA POST -->
-    <form id="delete-form" action="index.php?page=app&tab=team" method="POST" style="display:none;">
+    <form id="delete-form" action="index.php?page=app&tab=team&manage=1" method="POST" style="display:none;">
         <input type="hidden" name="action" value="deletar_jogador">
         <input type="hidden" name="jogador_id" id="delete_jogador_id" value="">
     </form>
@@ -532,6 +537,14 @@ if ($page === 'app') {
         // --- INICIALIZAÇÃO E DASHBOARD ---
         document.addEventListener('DOMContentLoaded', () => {
             if(appState && appState.sprint) {
+                const params = new URLSearchParams(window.location.search);
+                const tab = params.get('tab');
+                if (tab) {
+                    switchTab(tab);
+                }
+                if (tab === 'team' && params.get('manage') === '1') {
+                    toggleManagePlayers();
+                }
                 document.getElementById('sprint-display').innerText = appState.sprint;
                 const sel = document.getElementById('formation-select');
                 if(sel) sel.innerHTML = appState.formations.map(f => `<option class="bg-slate-900" value="${f}">${f}</option>`).join('');
@@ -580,15 +593,18 @@ if ($page === 'app') {
             let html = '';
             appState.all_players.forEach(p => {
                 let color = p.ovr >= 90 ? 'text-yellow-400' : (p.ovr >= 85 ? 'text-emerald-400' : 'text-slate-300');
+                const isOwner = p.gm_dono === appState.gm_logado.nome_time;
                 html += `
                 <tr class="border-b border-slate-700/50 hover:bg-slate-800 transition">
                     <td class="p-4 text-center font-black ${color} text-lg">${p.ovr}</td>
                     <td class="p-4 font-bold text-white">${p.name}</td>
                     <td class="p-4"><span class="bg-slate-800 px-2 py-1 rounded text-[10px] font-bold text-slate-400">${p.pos}</span></td>
                     <td class="p-4 text-slate-300">${p.idade} anos</td>
-                    <td class="p-4 hidden sm:table-cell text-xs text-slate-500 uppercase">${p.realTeam}</td>
                     <td class="p-4 text-right">
-                        <span class="inline-block px-3 py-1 rounded-full text-xs font-bold ${p.gm_dono === 'Livre' ? 'bg-slate-700 text-slate-300' : 'bg-blue-900/30 text-blue-400 border border-blue-500/30'}">${p.gm_dono}</span>
+                        <div class="flex items-center justify-end gap-2">
+                            <span class="inline-block px-3 py-1 rounded-full text-xs font-bold ${p.gm_dono === 'Livre' ? 'bg-slate-700 text-slate-300' : 'bg-blue-900/30 text-blue-400 border border-blue-500/30'}">${p.gm_dono}</span>
+                            ${isOwner ? `<button onclick='editPlayer(${JSON.stringify(p)})' class="text-blue-400 hover:text-blue-300" title="Editar"><i class="fa-solid fa-pen"></i></button>` : ''}
+                        </div>
                     </td>
                 </tr>`;
             });
@@ -617,7 +633,6 @@ if ($page === 'app') {
                     <td class="p-3 text-white font-medium">${p.name}</td>
                     <td class="p-3 text-xs">${p.pos}</td>
                     <td class="p-3 text-xs text-slate-400">${p.idade || 25}</td>
-                    <td class="p-3 text-xs text-slate-400">${p.realTeam}</td>
                     <td class="p-3 text-right space-x-2">
                         <button onclick='editPlayer(${JSON.stringify(p)})' class="text-blue-400 hover:text-blue-300"><i class="fa-solid fa-pen"></i></button>
                         <button onclick='deletePlayer(${p.id})' class="text-red-400 hover:text-red-300"><i class="fa-solid fa-trash"></i></button>
@@ -630,7 +645,6 @@ if ($page === 'app') {
             document.getElementById('modal-title').innerText = "Novo Jogador";
             document.getElementById('modal_id').value = "";
             document.getElementById('modal_nome').value = "";
-            document.getElementById('modal_time').value = "";
             document.getElementById('modal_ovr').value = "80";
             document.getElementById('modal_idade').value = "25";
             document.getElementById('player-modal').classList.remove('hidden');
@@ -641,7 +655,6 @@ if ($page === 'app') {
             document.getElementById('modal_id').value = p.id;
             document.getElementById('modal_nome').value = p.name;
             document.getElementById('modal_pos').value = p.pos;
-            document.getElementById('modal_time').value = p.realTeam;
             document.getElementById('modal_ovr').value = p.ovr;
             document.getElementById('modal_idade').value = p.idade || 25;
             document.getElementById('player-modal').classList.remove('hidden');
@@ -657,11 +670,105 @@ if ($page === 'app') {
         }
 
         // --- CAMPINHO (Versão Enxuta) ---
-        function renderPitch() {
-            // ... (Lógica do campinho mantida igual, só omitida para focar no novo HTML acima) ...
-            document.getElementById('pitch-container').innerHTML = `<div class="absolute inset-0 flex items-center justify-center text-slate-500 font-bold uppercase tracking-widest text-sm">Campinho Ativo</div>`;
+        const formationMap = {
+            '4-3-3': ['GOL','LD','ZAG','ZAG','LE','MC','MC','MEI','PD','ATA','PE'],
+            '4-4-2': ['GOL','LD','ZAG','ZAG','LE','MC','MC','MEI','MEI','ATA','ATA'],
+            '4-2-3-1': ['GOL','LD','ZAG','ZAG','LE','VOL','VOL','MEI','MEI','MEI','ATA'],
+            '3-5-2': ['GOL','ZAG','ZAG','ZAG','MC','MC','MEI','MEI','LD','LE','ATA'],
+            '5-3-2': ['GOL','LD','ZAG','ZAG','ZAG','LE','MC','MC','MEI','ATA','ATA']
+        };
+
+        function getSelectedIds() {
+            const selects = Array.from(document.querySelectorAll('.pitch-select'));
+            return selects.map(s => parseInt(s.value, 10)).filter(v => !Number.isNaN(v));
         }
-        function renderBench() { document.getElementById('bench-list').innerHTML = `<div class="text-xs text-slate-500 p-2 text-center">Reservas listados aqui...</div>`; }
+
+        function renderPitch() {
+            const formation = document.getElementById('formation-select')?.value || '4-3-3';
+            const positions = formationMap[formation] || formationMap['4-3-3'];
+            const pitch = document.getElementById('pitch-container');
+            if (!pitch) return;
+
+            const titulares = appState.players.filter(p => p.is_titular);
+            const reservas = appState.players.filter(p => !p.is_titular);
+            const lineup = [...titulares, ...reservas].slice(0, 11);
+
+            const slots = positions.map((pos, idx) => {
+                const current = lineup[idx];
+                const options = appState.players.map(p => {
+                    const selected = current && p.id === current.id ? 'selected' : '';
+                    return `<option value="${p.id}" ${selected}>${p.name} (${p.pos}) OVR ${p.ovr}</option>`;
+                }).join('');
+
+                return `
+                <div class="flex flex-col items-center gap-2">
+                    <div class="text-[10px] font-bold text-slate-200 bg-slate-900/60 px-2 py-1 rounded">${pos}</div>
+                    <select class="pitch-select bg-slate-900 border border-slate-700 text-xs text-white rounded-lg px-2 py-1" data-prev="${current ? current.id : ''}">
+                        ${options}
+                    </select>
+                </div>`;
+            }).join('');
+
+            pitch.innerHTML = `
+                <div class="absolute inset-0 p-4 grid grid-cols-2 sm:grid-cols-3 gap-3 place-items-center">
+                    ${slots}
+                </div>
+            `;
+
+            document.querySelectorAll('.pitch-select').forEach(sel => {
+                sel.addEventListener('change', (e) => {
+                    const val = parseInt(e.target.value, 10);
+                    const selected = getSelectedIds();
+                    const duplicates = selected.filter((v, i) => selected.indexOf(v) !== i);
+                    if (duplicates.length > 0) {
+                        const prev = e.target.getAttribute('data-prev');
+                        if (prev) e.target.value = prev;
+                        alert('Este jogador ja esta escalado.');
+                        return;
+                    }
+                    e.target.setAttribute('data-prev', val);
+                    renderBench();
+                });
+            });
+
+            renderBench();
+        }
+
+        function renderBench() {
+            const bench = document.getElementById('bench-list');
+            if (!bench) return;
+            const selected = new Set(getSelectedIds());
+            const reservas = appState.players.filter(p => !selected.has(p.id));
+            if (reservas.length === 0) {
+                bench.innerHTML = `<div class="text-xs text-slate-500 p-2 text-center">Sem reservas.</div>`;
+                return;
+            }
+            bench.innerHTML = reservas.map(p => `
+                <div class="flex items-center justify-between bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2">
+                    <div>
+                        <div class="text-xs font-bold text-white">${p.name}</div>
+                        <div class="text-[10px] text-slate-400">${p.pos} • OVR ${p.ovr}</div>
+                    </div>
+                    <button type="button" class="text-emerald-400 text-xs font-bold" onclick="swapIntoLineup(${p.id})">Escalar</button>
+                </div>
+            `).join('');
+        }
+
+        function swapIntoLineup(playerId) {
+            const selects = Array.from(document.querySelectorAll('.pitch-select'));
+            const selected = new Set(getSelectedIds());
+            if (selected.has(playerId)) return;
+            const target = selects.find(s => s && s.value);
+            if (!target) return;
+            target.value = playerId;
+            target.setAttribute('data-prev', playerId);
+            renderBench();
+        }
+
+        document.getElementById('lineup-form')?.addEventListener('submit', (e) => {
+            const ids = getSelectedIds();
+            document.getElementById('titulares-input').value = ids.join(',');
+        });
         function renderRanking() { /* igual */ }
     </script>
 <?php endif; ?>
