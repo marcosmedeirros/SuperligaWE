@@ -10,8 +10,8 @@ date_default_timezone_set('America/Sao_Paulo');
 // 0. CONEXÃO PDO E MIGRATIONS (Setup do Banco)
 // ------------------------------------------------------------------
 $db_host = 'localhost';
-$db_name = 'u289267434_futfantasy';
-$db_user = 'u289267434_futfantasy';
+$db_name = 'u289267434_u289267434_fut';
+$db_user = 'u289267434_u289267434_fut';
 $db_pass = 'Tu#@EX/K>&=2';
 
 $pdo = null;
