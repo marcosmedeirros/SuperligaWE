@@ -693,13 +693,20 @@ if ($page === 'app') {
             const reservas = appState.players.filter(p => !p.is_titular);
             const lineup = [...titulares, ...reservas].slice(0, 11);
 
-            const slots = positions.map((pos, idx) => {
+            const lineBuckets = { GOL: [], DEF: [], MID: [], ATA: [] };
+            positions.forEach((pos, idx) => {
                 const current = lineup[idx];
+                if (pos === 'GOL') lineBuckets.GOL.push({ pos, current });
+                else if (['ZAG','LD','LE'].includes(pos)) lineBuckets.DEF.push({ pos, current });
+                else if (['VOL','MC','MEI'].includes(pos)) lineBuckets.MID.push({ pos, current });
+                else lineBuckets.ATA.push({ pos, current });
+            });
+
+            const buildSlot = ({ pos, current }) => {
                 const options = appState.players.map(p => {
                     const selected = current && p.id === current.id ? 'selected' : '';
                     return `<option value="${p.id}" ${selected}>${p.name} (${p.pos}) OVR ${p.ovr}</option>`;
                 }).join('');
-
                 return `
                 <div class="flex flex-col items-center gap-2">
                     <div class="text-[10px] font-bold text-slate-200 bg-slate-900/60 px-2 py-1 rounded">${pos}</div>
@@ -707,11 +714,25 @@ if ($page === 'app') {
                         ${options}
                     </select>
                 </div>`;
-            }).join('');
+            };
+
+            const buildLine = (label, items) => {
+                if (items.length === 0) return '';
+                return `
+                <div class="flex flex-col items-center gap-2">
+                    <div class="text-[10px] font-bold text-slate-300 uppercase tracking-widest">${label}</div>
+                    <div class="flex items-center justify-center gap-3 flex-wrap">
+                        ${items.map(buildSlot).join('')}
+                    </div>
+                </div>`;
+            };
 
             pitch.innerHTML = `
-                <div class="absolute inset-0 p-4 grid grid-cols-2 sm:grid-cols-3 gap-3 place-items-center">
-                    ${slots}
+                <div class="absolute inset-0 p-4 flex flex-col justify-between">
+                    ${buildLine('Goleiro', lineBuckets.GOL)}
+                    ${buildLine('Defensores', lineBuckets.DEF)}
+                    ${buildLine('Meio', lineBuckets.MID)}
+                    ${buildLine('Ataque', lineBuckets.ATA)}
                 </div>
             `;
 
@@ -737,8 +758,25 @@ if ($page === 'app') {
         function renderBench() {
             const bench = document.getElementById('bench-list');
             if (!bench) return;
+            const formation = document.getElementById('formation-select')?.value || '4-3-3';
+            const positions = formationMap[formation] || formationMap['4-3-3'];
+            const posOrder = new Map();
+            positions.forEach((pos, idx) => {
+                if (!posOrder.has(pos)) posOrder.set(pos, idx);
+            });
+            const fallbackOrder = ['GOL','ZAG','LD','LE','VOL','MC','MEI','PD','PE','ATA'];
+            fallbackOrder.forEach((pos, idx) => {
+                if (!posOrder.has(pos)) posOrder.set(pos, positions.length + idx);
+            });
             const selected = new Set(getSelectedIds());
-            const reservas = appState.players.filter(p => !selected.has(p.id));
+            const reservas = appState.players
+                .filter(p => !selected.has(p.id))
+                .sort((a, b) => {
+                    const aPos = posOrder.get(a.pos) ?? 999;
+                    const bPos = posOrder.get(b.pos) ?? 999;
+                    if (aPos !== bPos) return aPos - bPos;
+                    return b.ovr - a.ovr;
+                });
             if (reservas.length === 0) {
                 bench.innerHTML = `<div class="text-xs text-slate-500 p-2 text-center">Sem reservas.</div>`;
                 return;
