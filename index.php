@@ -110,6 +110,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'logout') { session_destroy(); header("Location: ?page=login"); exit; }
 
     // SENIOR TIP: CRUD DE JOGADORES (Create / Update)
+    if ($action === 'salvar_jogador' && (!$db_connected || !isset($_SESSION['gm_id']))) {
+        header("Location: ?page=app&tab=team&error=db"); exit;
+    }
     if ($action === 'salvar_jogador' && $db_connected && isset($_SESSION['gm_id'])) {
         $id = !empty($_POST['jogador_id']) ? (int)$_POST['jogador_id'] : null;
         $nome = $_POST['nome'];
@@ -364,6 +367,12 @@ if ($page === 'app') {
                         <select id="formation-select" onchange="renderPitch()" class="bg-slate-900 border border-slate-600 text-white rounded-lg p-2 font-bold focus:outline-none"></select>
                     </div>
                 </div>
+
+                <?php if (($_GET['error'] ?? '') === 'db'): ?>
+                    <div class="mb-4 rounded-xl border border-red-800/60 bg-red-900/20 px-4 py-3 text-sm text-red-200">
+                        Banco offline. Nao foi possivel salvar o jogador.
+                    </div>
+                <?php endif; ?>
                 
                 <!-- VIEW 1: CAMPINHO -->
                 <div id="view-pitch" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -451,7 +460,7 @@ if ($page === 'app') {
             <button onclick="closePlayerModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <h2 class="text-xl font-bold text-white mb-6" id="modal-title">Novo Jogador</h2>
             
-            <form action="index.php" method="POST" class="space-y-4">
+            <form action="index.php?page=app&tab=team" method="POST" class="space-y-4">
                 <input type="hidden" name="action" value="salvar_jogador">
                 <input type="hidden" name="jogador_id" id="modal_id" value="">
                 
@@ -477,7 +486,29 @@ if ($page === 'app') {
                 <div class="grid grid-cols-3 gap-4">
                     <div class="col-span-2">
                         <label class="block text-xs font-bold text-slate-400 mb-1">Time Real</label>
-                        <input type="text" name="time_real" id="modal_time" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white text-sm focus:border-emerald-500 focus:outline-none">
+                        <input type="text" name="time_real" id="modal_time" list="real-team-list" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white text-sm focus:border-emerald-500 focus:outline-none">
+                        <datalist id="real-team-list">
+                            <option value="Flamengo"></option>
+                            <option value="Corinthians"></option>
+                            <option value="Palmeiras"></option>
+                            <option value="Santos"></option>
+                            <option value="Sao Paulo"></option>
+                            <option value="Vasco"></option>
+                            <option value="Fluminense"></option>
+                            <option value="Gremio"></option>
+                            <option value="Internacional"></option>
+                            <option value="Cruzeiro"></option>
+                            <option value="Atletico-MG"></option>
+                            <option value="Bahia"></option>
+                            <option value="Botafogo"></option>
+                            <option value="Athletico-PR"></option>
+                            <option value="Fortaleza"></option>
+                            <option value="Ceara"></option>
+                            <option value="Sport"></option>
+                            <option value="Goias"></option>
+                            <option value="Coritiba"></option>
+                            <option value="America-MG"></option>
+                        </datalist>
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-slate-400 mb-1">Idade</label>
@@ -490,7 +521,7 @@ if ($page === 'app') {
     </div>
 
     <!-- MODAL DE DELETE INVISÍVEL PARA POST -->
-    <form id="delete-form" action="index.php" method="POST" style="display:none;">
+    <form id="delete-form" action="index.php?page=app&tab=team" method="POST" style="display:none;">
         <input type="hidden" name="action" value="deletar_jogador">
         <input type="hidden" name="jogador_id" id="delete_jogador_id" value="">
     </form>
