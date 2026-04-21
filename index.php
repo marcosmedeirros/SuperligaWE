@@ -1,51 +1,41 @@
 <?php
-/**
- * FANTASY FC - ARQUITETURA SINGLE-FILE PHP (NÍVEL PLENO/SÊNIOR)
- * Dinâmico com BD, Mercado, Dashboard, CRUD de Jogadores e Cap.
- */
 session_start();
 date_default_timezone_set('America/Sao_Paulo');
 
-// ------------------------------------------------------------------
-// 0. CONEXÃO PDO E MIGRATIONS (Setup do Banco)
-// ------------------------------------------------------------------
-$db_host = 'localhost';
-$db_name = 'u289267434_u289267434_fut';
-$db_user = 'u289267434_u289267434_fut';
-$db_pass = 'Tu#@EX/K>&=2';
+require __DIR__ . '/config.php';
+require __DIR__ . '/migrations.php';
 
-$pdo = null;
-$db_connected = false;
+if ($db_connected) {
+    runMigrations($pdo);
+}
 
-function runMigrations($pdo) {
-    // Adicionamos 'idade' na tabela jogador
-    $sql = "
-    <?php
-    session_start();
-    date_default_timezone_set('America/Sao_Paulo');
+require __DIR__ . '/actions.php';
 
-    require __DIR__ . '/config.php';
-    require __DIR__ . '/migrations.php';
+$page = $_GET['page'] ?? 'login';
 
-    if ($db_connected) {
-        runMigrations($pdo);
-        seedDatabaseIfNeeded($pdo);
-    }
+$paginas_protegidas = ['saves', 'app'];
+$requer_save        = ['app'];
 
-    require __DIR__ . '/actions.php';
+if (in_array($page, $paginas_protegidas) && !isset($_SESSION['ecofut_logado'])) {
+    header("Location: ?page=login"); exit;
+}
 
-    $page = $_GET['page'] ?? 'login';
-    if ($page === 'app' && !isset($_SESSION['logged_in'])) {
-        header("Location: ?page=login");
-        exit;
-    }
+if (in_array($page, $requer_save) && !isset($_SESSION['ecofut_save_id'])) {
+    header("Location: ?page=saves"); exit;
+}
 
-    require __DIR__ . '/data.php';
+if (in_array($page, ['login', 'register']) && isset($_SESSION['ecofut_logado'])) {
+    header("Location: ?page=saves"); exit;
+}
 
-    require __DIR__ . '/views/layout/header.php';
-    if ($page === 'app') {
-        require __DIR__ . '/views/app.php';
-    } else {
-        require __DIR__ . '/views/login.php';
-    }
-    require __DIR__ . '/views/layout/footer.php';
+require __DIR__ . '/data.php';
+require __DIR__ . '/views/layout/header.php';
+
+switch ($page) {
+    case 'register': require __DIR__ . '/views/register.php'; break;
+    case 'saves':    require __DIR__ . '/views/saves.php';    break;
+    case 'app':      require __DIR__ . '/views/app.php';      break;
+    default:         require __DIR__ . '/views/login.php';
+}
+
+require __DIR__ . '/views/layout/footer.php';

@@ -1,68 +1,93 @@
-<?php include __DIR__ . '/partials/sidebar.php'; ?>
+<?php
+$save       = $page_data['save'] ?? [];
+$nome_time  = $save['nome_time'] ?? 'Meu Time';
+$treinador  = $save['nome_treinador'] ?? 'Treinador';
+$temporada  = $save['temporada'] ?? 1;
+$saldo      = $save['saldo'] ?? 0;
+$slot       = $_SESSION['ecofut_save_slot'] ?? 1;
+?>
 
-<main class="flex-1 overflow-y-auto bg-slate-900 p-4 md:p-8 relative">
-    <div class="md:hidden flex justify-between items-center mb-4 bg-slate-950 p-4 rounded-xl border border-slate-800">
-        <h1 class="text-xl font-black text-emerald-400">FANTASY FC</h1>
-        <button onclick="document.getElementById('sidebar').classList.remove('-translate-x-full')" class="text-slate-400"><i class="fa-solid fa-bars text-xl"></i></button>
-    </div>
+<div class="min-h-screen flex flex-col">
 
-    <div class="flex justify-between items-center mb-6 bg-slate-800/80 p-4 rounded-xl border border-slate-700 backdrop-blur-sm">
-        <div>
-            <h2 class="text-slate-400 text-xs font-bold uppercase">Temporada Atual</h2>
-            <div class="text-xl font-bold text-white"><i class="fa-solid fa-calendar text-emerald-500 mr-2"></i> Sprint <span id="sprint-display"></span>/15</div>
-        </div>
-        <div class="text-right">
-            <h2 class="text-slate-400 text-xs font-bold uppercase">DB Status</h2>
-            <div class="text-sm font-bold <?php echo $db_connected ? 'text-emerald-400' : 'text-red-500'; ?>"><i class="fa-solid fa-database mr-1"></i> <?php echo $db_connected ? 'ONLINE' : 'OFFLINE'; ?></div>
-        </div>
-    </div>
-
-    <?php include __DIR__ . '/tabs/dashboard.php'; ?>
-    <?php include __DIR__ . '/tabs/team.php'; ?>
-    <?php include __DIR__ . '/tabs/all_players.php'; ?>
-    <?php include __DIR__ . '/tabs/market.php'; ?>
-    <?php include __DIR__ . '/tabs/ranking.php'; ?>
-    <?php include __DIR__ . '/tabs/admin.php'; ?>
-</main>
-
-<div id="player-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 hidden">
-    <div class="bg-slate-800 border border-slate-600 rounded-2xl p-6 w-full max-w-md shadow-2xl relative">
-        <button onclick="closePlayerModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
-        <h2 class="text-xl font-bold text-white mb-6" id="modal-title">Novo Jogador</h2>
-
-        <form action="index.php?page=app&tab=team&manage=1" method="POST" class="space-y-4">
-            <input type="hidden" name="action" value="salvar_jogador">
-            <input type="hidden" name="jogador_id" id="modal_id" value="">
-
-            <div>
-                <label class="block text-xs font-bold text-slate-400 mb-1">Nome</label>
-                <input type="text" name="nome" id="modal_nome" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white text-sm focus:border-emerald-500 focus:outline-none">
+    <!-- topbar -->
+    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-futbol text-green-400"></i>
+                <span class="font-black text-lg hidden sm:block"><span class="text-white">ECO</span><span class="text-green-400">FUT</span></span>
             </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-bold text-slate-400 mb-1">Posicao</label>
-                    <select name="posicao" id="modal_pos" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white text-sm focus:border-emerald-500 focus:outline-none">
-                        <option value="ATA">ATA (Ataque)</option><option value="PE">PE (Ponta Esq)</option><option value="PD">PD (Ponta Dir)</option>
-                        <option value="MEI">MEI (Meia)</option><option value="MC">MC (Meia Cen)</option><option value="VOL">VOL (Volante)</option>
-                        <option value="ZAG">ZAG (Zagueiro)</option><option value="LE">LE (Lat Esq)</option><option value="LD">LD (Lat Dir)</option>
-                        <option value="GOL">GOL (Goleiro)</option>
-                    </select>
+
+            <div class="flex items-center gap-2 sm:gap-6 text-sm">
+                <div class="text-center hidden md:block">
+                    <p class="text-slate-500 text-xs">Time</p>
+                    <p class="font-bold text-white"><?= htmlspecialchars($nome_time) ?></p>
                 </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-400 mb-1">OVR</label>
-                    <input type="number" name="overall" id="modal_ovr" required min="40" max="99" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white text-sm focus:border-emerald-500 focus:outline-none">
+                <div class="text-center">
+                    <p class="text-slate-500 text-xs">Temporada</p>
+                    <p class="font-bold text-white"><?= $temporada ?>ª</p>
+                </div>
+                <div class="text-center">
+                    <p class="text-slate-500 text-xs">Saldo</p>
+                    <p class="font-bold text-green-400">R$ <?= number_format($saldo, 0, ',', '.') ?></p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <form method="POST" action="?page=app">
+                        <input type="hidden" name="action" value="sair_save">
+                        <button class="text-slate-500 hover:text-white text-xs flex items-center gap-1 transition px-2 py-1 rounded-lg hover:bg-slate-800">
+                            <i class="fas fa-floppy-disk"></i> <span class="hidden sm:inline">Saves</span>
+                        </button>
+                    </form>
+                    <form method="POST" action="?page=app">
+                        <input type="hidden" name="action" value="logout">
+                        <button class="text-slate-500 hover:text-red-400 text-xs flex items-center gap-1 transition px-2 py-1 rounded-lg hover:bg-slate-800">
+                            <i class="fas fa-sign-out-alt"></i> <span class="hidden sm:inline">Sair</span>
+                        </button>
+                    </form>
                 </div>
             </div>
-            <div>
-                <label class="block text-xs font-bold text-slate-400 mb-1">Idade</label>
-                <input type="number" name="idade" id="modal_idade" required min="15" max="45" value="25" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white text-sm focus:border-emerald-500 focus:outline-none">
+        </div>
+    </header>
+
+    <!-- conteúdo principal (placeholder — próximas etapas) -->
+    <main class="flex-1 flex items-center justify-center p-8">
+        <div class="text-center max-w-lg">
+            <div class="inline-flex items-center justify-center w-24 h-24 rounded-2xl bg-green-500/10 border border-green-500/20 mb-6">
+                <i class="fas fa-futbol text-green-400 text-4xl"></i>
             </div>
-            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg mt-4 transition shadow-lg">Salvar Jogador</button>
-        </form>
-    </div>
+            <h2 class="text-3xl font-black text-white mb-3">
+                Bem-vindo ao <span class="text-green-400"><?= htmlspecialchars($nome_time) ?></span>!
+            </h2>
+            <p class="text-slate-400 mb-2">Treinador: <strong class="text-white"><?= htmlspecialchars($treinador) ?></strong></p>
+            <p class="text-slate-400 mb-8">O elenco, campeonatos e demais módulos serão construídos nas próximas etapas.</p>
+
+            <div class="grid grid-cols-3 gap-4 mb-8">
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                    <i class="fas fa-calendar-alt text-green-400 text-xl mb-2"></i>
+                    <p class="text-xs text-slate-500">Temporada</p>
+                    <p class="text-xl font-black text-white"><?= $temporada ?>ª</p>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                    <i class="fas fa-coins text-yellow-400 text-xl mb-2"></i>
+                    <p class="text-xs text-slate-500">Saldo inicial</p>
+                    <p class="text-xl font-black text-green-400">10M</p>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                    <i class="fas fa-floppy-disk text-blue-400 text-xl mb-2"></i>
+                    <p class="text-xs text-slate-500">Save Slot</p>
+                    <p class="text-xl font-black text-white"><?= $slot ?></p>
+                </div>
+            </div>
+
+            <div class="bg-slate-900 border border-green-500/20 rounded-xl p-5 text-left text-sm text-slate-400">
+                <p class="text-green-400 font-bold mb-2"><i class="fas fa-road mr-2"></i>Próximas etapas do EcoFut:</p>
+                <ul class="space-y-1.5">
+                    <li><i class="fas fa-check text-slate-600 mr-2"></i> <s>Sistema de login e saves</s> <span class="text-green-400 text-xs">✓ Concluído</span></li>
+                    <li><i class="fas fa-clock text-yellow-500 mr-2"></i> Elenco, jogadores e atributos detalhados</li>
+                    <li><i class="fas fa-clock text-slate-600 mr-2"></i> Motor de simulação de partidas</li>
+                    <li><i class="fas fa-clock text-slate-600 mr-2"></i> Campeonatos e tabelas</li>
+                    <li><i class="fas fa-clock text-slate-600 mr-2"></i> Finanças e mercado de transferências</li>
+                </ul>
+            </div>
+        </div>
+    </main>
 </div>
-
-<form id="delete-form" action="index.php?page=app&tab=team&manage=1" method="POST" style="display:none;">
-    <input type="hidden" name="action" value="deletar_jogador">
-    <input type="hidden" name="jogador_id" id="delete_jogador_id" value="">
-</form>
