@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xxd /c/Users/marco/Documents/SuperligaWE/teams/flarj.ban)",
+      "Bash(grep -E \"\\(bahia|vasco|santos|gremio|palmeiras|corinthians|saopaulo|atleticomg|cruzeiro|botafogorj|flurj|internacional\\)\\\\.ban$\")",
+      "Bash(xxd /c/Users/marco/Documents/SuperligaWE/conf_ligas_nacionais/BRA.cfg)",
+      "Bash(xxd /c/Users/marco/Documents/SuperligaWE/conf_estadual/SP.ces)",
+      "Read(//usr/**)",
+      "Read(//usr/local/**)",
+      "Bash(where php *)",
+      "Bash(powershell -c \"Get-Command php -ErrorAction SilentlyContinue\")",
+      "Read(//c//**)"
+    ]
+  }
+}

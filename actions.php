@@ -1,5 +1,5 @@
 <?php
-$msg = '';
+$msg      = '';
 $msg_tipo = '';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
@@ -15,10 +15,10 @@ if ($action === 'register') {
     $senha = $_POST['senha'] ?? '';
     $conf  = $_POST['confirmar_senha'] ?? '';
 
-    if (strlen($nome) < 2)          { $msg = 'Nome muito curto.'; $msg_tipo = 'erro'; goto fim; }
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) { $msg = 'E-mail inválido.'; $msg_tipo = 'erro'; goto fim; }
-    if (strlen($senha) < 6)         { $msg = 'Senha deve ter ao menos 6 caracteres.'; $msg_tipo = 'erro'; goto fim; }
-    if ($senha !== $conf)           { $msg = 'As senhas não coincidem.'; $msg_tipo = 'erro'; goto fim; }
+    if (strlen($nome) < 2)                              { $msg = 'Nome muito curto.'; $msg_tipo = 'erro'; goto fim; }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL))     { $msg = 'E-mail inválido.'; $msg_tipo = 'erro'; goto fim; }
+    if (strlen($senha) < 6)                             { $msg = 'Senha deve ter ao menos 6 caracteres.'; $msg_tipo = 'erro'; goto fim; }
+    if ($senha !== $conf)                               { $msg = 'As senhas não coincidem.'; $msg_tipo = 'erro'; goto fim; }
 
     $stmt = $pdo->prepare("SELECT id FROM ecofut_usuarios WHERE email = ?");
     $stmt->execute([$email]);
@@ -44,9 +44,7 @@ if ($action === 'login') {
     $usuario = $stmt->fetch();
 
     if (!$usuario || !password_verify($senha, $usuario['senha'])) {
-        $msg = 'E-mail ou senha incorretos.';
-        $msg_tipo = 'erro';
-        goto fim;
+        $msg = 'E-mail ou senha incorretos.'; $msg_tipo = 'erro'; goto fim;
     }
 
     $_SESSION['ecofut_logado']       = true;
@@ -70,40 +68,47 @@ if ($action === 'novo_save') {
         header("Location: ?page=saves"); exit;
     }
 
-    $usuario_id     = (int) $_SESSION['ecofut_usuario_id'];
-    $slot           = (int) ($_POST['slot'] ?? 1);
+    $usuario_id     = (int)$_SESSION['ecofut_usuario_id'];
+    $slot           = (int)($_POST['slot'] ?? 1);
     $nome_treinador = trim($_POST['nome_treinador'] ?? '');
-    $nome_time      = trim($_POST['nome_time'] ?? '');
+    $time_id        = (int)($_POST['time_id'] ?? 0);
 
     if ($slot < 1 || $slot > 2)      { $msg = 'Slot inválido.'; $msg_tipo = 'erro'; goto fim; }
     if (strlen($nome_treinador) < 2) { $msg = 'Nome do treinador muito curto.'; $msg_tipo = 'erro'; goto fim; }
-    if (strlen($nome_time) < 2)      { $msg = 'Nome do time muito curto.'; $msg_tipo = 'erro'; goto fim; }
+    if ($time_id <= 0)               { $msg = 'Selecione um time para continuar.'; $msg_tipo = 'erro'; goto fim; }
+
+    // Verifica se time existe
+    $stmtTime = $pdo->prepare("SELECT nome, cor1 FROM ecofut_times WHERE id = ?");
+    $stmtTime->execute([$time_id]);
+    $timeRow = $stmtTime->fetch();
+    if (!$timeRow) { $msg = 'Time não encontrado.'; $msg_tipo = 'erro'; goto fim; }
+
+    $nome_time = $timeRow['nome'];
+
+    // Apaga dados do slot anterior (cascata cuida de elenco, partidas, etc.)
+    $saveAnt = $pdo->prepare("SELECT id FROM ecofut_saves WHERE usuario_id = ? AND slot = ?");
+    $saveAnt->execute([$usuario_id, $slot]);
+    $antRow = $saveAnt->fetch();
+    if ($antRow) {
+        $pdo->prepare("DELETE FROM ecofut_saves WHERE id = ?")->execute([$antRow['id']]);
+    }
 
     $dados_iniciais = json_encode([
-        'formacao'  => '4-3-3',
-        'estilo'    => 'equilibrado',
-        'marcacao'  => 'leve',
-        'estadio'   => ['nome' => $nome_time . ' Arena', 'capacidade' => 20000],
-        'titulos'   => [],
-        'historico' => [],
+        'formacao' => '4-3-3',
+        'estilo'   => 'equilibrado',
     ]);
 
     $stmt = $pdo->prepare(
-        "INSERT INTO ecofut_saves (usuario_id, slot, nome_treinador, nome_time, temporada, saldo, dados_json)
-         VALUES (?, ?, ?, ?, 1, 10000000, ?)
-         ON DUPLICATE KEY UPDATE
-           nome_treinador = VALUES(nome_treinador),
-           nome_time      = VALUES(nome_time),
-           temporada      = 1,
-           saldo          = 10000000,
-           dados_json     = VALUES(dados_json),
-           updated_at     = CURRENT_TIMESTAMP"
+        "INSERT INTO ecofut_saves
+         (usuario_id, slot, nome_treinador, nome_time, time_id, temporada, rodada_atual, saldo, dados_json)
+         VALUES (?, ?, ?, ?, ?, 1, 1, 10000000, ?)"
     );
-    $stmt->execute([$usuario_id, $slot, $nome_treinador, $nome_time, $dados_iniciais]);
+    $stmt->execute([$usuario_id, $slot, $nome_treinador, $nome_time, $time_id, $dados_iniciais]);
+    $save_id = (int)$pdo->lastInsertId();
 
-    $save_id = (int) ($pdo->lastInsertId() ?: $pdo->query(
-        "SELECT id FROM ecofut_saves WHERE usuario_id=$usuario_id AND slot=$slot"
-    )->fetchColumn());
+    // Inicializa temporada (elenco, fixtures, classificação)
+    require_once __DIR__ . '/engine/season.php';
+    inicializarTemporada($pdo, $save_id, $time_id);
 
     $_SESSION['ecofut_save_id']   = $save_id;
     $_SESSION['ecofut_save_slot'] = $slot;
@@ -119,8 +124,8 @@ if ($action === 'carregar_save') {
         header("Location: ?page=saves"); exit;
     }
 
-    $usuario_id = (int) $_SESSION['ecofut_usuario_id'];
-    $slot       = (int) ($_POST['slot'] ?? 1);
+    $usuario_id = (int)$_SESSION['ecofut_usuario_id'];
+    $slot       = (int)($_POST['slot'] ?? 1);
 
     $stmt = $pdo->prepare("SELECT id, nome_time, slot FROM ecofut_saves WHERE usuario_id = ? AND slot = ?");
     $stmt->execute([$usuario_id, $slot]);
@@ -128,18 +133,136 @@ if ($action === 'carregar_save') {
 
     if (!$save) { header("Location: ?page=saves"); exit; }
 
-    $_SESSION['ecofut_save_id']   = (int) $save['id'];
-    $_SESSION['ecofut_save_slot'] = (int) $save['slot'];
+    $_SESSION['ecofut_save_id']   = (int)$save['id'];
+    $_SESSION['ecofut_save_slot'] = (int)$save['slot'];
     $_SESSION['ecofut_nome_time'] = $save['nome_time'];
 
     header("Location: ?page=app");
     exit;
 }
 
-// ── SAIR DO SAVE ─────────────────────────────────────────────────────────────
+// ── SAIR DO SAVE ──────────────────────────────────────────────────────────────
 if ($action === 'sair_save') {
     unset($_SESSION['ecofut_save_id'], $_SESSION['ecofut_save_slot'], $_SESSION['ecofut_nome_time']);
     header("Location: ?page=saves");
+    exit;
+}
+
+// ── AVANCAR RODADA ────────────────────────────────────────────────────────────
+if ($action === 'avancar_rodada') {
+    if (!$db_connected || !isset($_SESSION['ecofut_save_id'])) {
+        header("Location: ?page=app"); exit;
+    }
+
+    $save_id = (int)$_SESSION['ecofut_save_id'];
+
+    require_once __DIR__ . '/engine/season.php';
+    $resultado = avancarRodada($pdo, $save_id);
+
+    // Guarda resultado da partida do usuário para exibir na view
+    if (!empty($resultado['partida_usuario'])) {
+        $pu = $resultado['partida_usuario'];
+
+        // Busca nomes dos times
+        $stmtN = $pdo->prepare("SELECT id, nome FROM ecofut_times WHERE id IN (?,?)");
+        $stmtN->execute([$pu['time_casa_id'], $pu['time_fora_id']]);
+        $nomes = [];
+        foreach ($stmtN->fetchAll() as $r) $nomes[$r['id']] = $r['nome'];
+
+        $_SESSION['ecofut_log_partida'] = [
+            'rodada'    => $resultado['rodada'],
+            'gols_casa' => $pu['gols_casa'],
+            'gols_fora' => $pu['gols_fora'],
+            'nome_casa' => $nomes[$pu['time_casa_id']] ?? 'Casa',
+            'nome_fora' => $nomes[$pu['time_fora_id']] ?? 'Fora',
+            'eventos'   => $pu['log'],
+        ];
+    } else {
+        unset($_SESSION['ecofut_log_partida']);
+    }
+
+    header("Location: ?page=app");
+    exit;
+}
+
+// ── COMPRAR JOGADOR ───────────────────────────────────────────────────────────
+if ($action === 'comprar_jogador') {
+    if (!$db_connected || !isset($_SESSION['ecofut_save_id'])) {
+        header("Location: ?page=app"); exit;
+    }
+
+    $save_id        = (int)$_SESSION['ecofut_save_id'];
+    $jogador_base_id = (int)($_POST['jogador_base_id'] ?? 0);
+    $preco          = (int)($_POST['preco'] ?? 0);
+
+    // Valida saldo
+    $saveRow = $pdo->prepare("SELECT saldo, time_id FROM ecofut_saves WHERE id = ?");
+    $saveRow->execute([$save_id]);
+    $saveData = $saveRow->fetch();
+
+    if (!$saveData || $saveData['saldo'] < $preco) {
+        $msg = 'Saldo insuficiente.'; $msg_tipo = 'erro'; goto fim;
+    }
+
+    // Valida jogador (não deve já estar no elenco)
+    $jaElenco = $pdo->prepare("SELECT id FROM ecofut_elenco WHERE save_id = ? AND jogador_base_id = ?");
+    $jaElenco->execute([$save_id, $jogador_base_id]);
+    if ($jaElenco->fetch()) { $msg = 'Jogador já está no seu elenco.'; $msg_tipo = 'erro'; goto fim; }
+
+    // Busca dados base
+    $jBase = $pdo->prepare("SELECT * FROM ecofut_jogadores_base WHERE id = ?");
+    $jBase->execute([$jogador_base_id]);
+    $j = $jBase->fetch();
+    if (!$j) { $msg = 'Jogador não encontrado.'; $msg_tipo = 'erro'; goto fim; }
+
+    // Insere no elenco
+    $pdo->prepare(
+        "INSERT INTO ecofut_elenco
+         (save_id, time_id, jogador_base_id, nome, posicao, forca, idade, energia, moral,
+          contundido, suspenso, salario, meses_contrato, titular,
+          sk_goleiro, sk_agilidade, sk_passe, sk_armacao, sk_desarme, sk_finalizacao, sk_tecnica)
+         VALUES (?,?,?,?,?,?,?,100,75,0,0,?,12,0,?,?,?,?,?,?,?)"
+    )->execute([
+        $save_id, $saveData['time_id'], $j['id'], $j['nome'], $j['posicao'],
+        $j['forca'], $j['idade'], $j['salario'],
+        $j['sk_goleiro'], $j['sk_agilidade'], $j['sk_passe'],
+        $j['sk_armacao'], $j['sk_desarme'], $j['sk_finalizacao'], $j['sk_tecnica'],
+    ]);
+
+    // Desconta saldo e registra
+    $pdo->prepare("UPDATE ecofut_saves SET saldo = saldo - ? WHERE id = ?")->execute([$preco, $save_id]);
+    $pdo->prepare(
+        "INSERT INTO ecofut_financas (save_id, categoria, descricao, valor)
+         VALUES (?, 'transferencia', ?, ?)"
+    )->execute([$save_id, 'Contratação: ' . $j['nome'], -$preco]);
+
+    header("Location: ?page=app");
+    exit;
+}
+
+// ── VENDER JOGADOR ────────────────────────────────────────────────────────────
+if ($action === 'vender_jogador') {
+    if (!$db_connected || !isset($_SESSION['ecofut_save_id'])) {
+        header("Location: ?page=app"); exit;
+    }
+
+    $save_id   = (int)$_SESSION['ecofut_save_id'];
+    $elenco_id = (int)($_POST['elenco_id'] ?? 0);
+    $preco     = (int)($_POST['preco'] ?? 0);
+
+    $j = $pdo->prepare("SELECT nome FROM ecofut_elenco WHERE id = ? AND save_id = ?");
+    $j->execute([$elenco_id, $save_id]);
+    $jRow = $j->fetch();
+    if (!$jRow) { $msg = 'Jogador não encontrado.'; $msg_tipo = 'erro'; goto fim; }
+
+    $pdo->prepare("DELETE FROM ecofut_elenco WHERE id = ? AND save_id = ?")->execute([$elenco_id, $save_id]);
+    $pdo->prepare("UPDATE ecofut_saves SET saldo = saldo + ? WHERE id = ?")->execute([$preco, $save_id]);
+    $pdo->prepare(
+        "INSERT INTO ecofut_financas (save_id, categoria, descricao, valor)
+         VALUES (?, 'transferencia', ?, ?)"
+    )->execute([$save_id, 'Venda: ' . $jRow['nome'], $preco]);
+
+    header("Location: ?page=app");
     exit;
 }
 

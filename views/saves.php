@@ -1,5 +1,6 @@
 <?php
-$saves  = $page_data['saves'] ?? [1 => null, 2 => null];
+$saves        = $page_data['saves'] ?? [1 => null, 2 => null];
+$times        = $page_data['times'] ?? [];
 $usuario_nome = $_SESSION['ecofut_usuario_nome'] ?? 'Treinador';
 
 function fmt_saldo(int $v): string {
@@ -11,9 +12,8 @@ function fmt_data(string $d): string {
 }
 ?>
 
-<!-- navbar topo -->
 <nav class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
-    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
         <div class="flex items-center gap-2">
             <i class="fas fa-futbol text-green-400 text-lg"></i>
             <span class="text-xl font-black"><span class="text-white">ECO</span><span class="text-green-400">FUT</span></span>
@@ -30,37 +30,35 @@ function fmt_data(string $d): string {
     </div>
 </nav>
 
-<div class="max-w-4xl mx-auto px-4 py-12">
+<div class="max-w-5xl mx-auto px-4 py-12">
 
-    <!-- cabeçalho -->
     <div class="text-center mb-12">
         <h2 class="text-3xl font-black text-white mb-2">Selecionar Save</h2>
         <p class="text-slate-400">Você tem 2 slots de save. Iniciar um novo jogo apaga o save anterior do slot.</p>
     </div>
 
-    <!-- slots -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <?php for ($slot = 1; $slot <= 2; $slot++):
-            $save = $saves[$slot];
+            $save  = $saves[$slot];
             $vazio = ($save === null);
         ?>
-        <div class="bg-slate-900 border <?= $vazio ? 'border-slate-800 border-dashed' : 'border-slate-700' ?> rounded-2xl overflow-hidden shadow-xl group relative">
+        <div class="bg-slate-900 border <?= $vazio ? 'border-slate-800 border-dashed' : 'border-slate-700' ?> rounded-2xl overflow-hidden shadow-xl relative">
 
-            <!-- badge slot -->
             <div class="absolute top-4 right-4">
                 <span class="text-xs font-bold bg-slate-800 text-slate-400 px-2 py-1 rounded-full">SLOT <?= $slot ?></span>
             </div>
 
             <?php if (!$vazio): ?>
-            <!-- save existente -->
             <div class="p-6">
                 <div class="flex items-start gap-4 mb-5">
-                    <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-green-500/20 to-green-700/20 border border-green-500/30 flex items-center justify-center flex-shrink-0">
-                        <i class="fas fa-shield-halved text-green-400 text-2xl"></i>
+                    <div class="w-14 h-14 rounded-xl flex-shrink-0 flex items-center justify-center"
+                         style="background: linear-gradient(135deg, <?= htmlspecialchars($save['cor1'] ?? '#22c55e') ?>33, <?= htmlspecialchars($save['cor1'] ?? '#22c55e') ?>11); border: 1px solid <?= htmlspecialchars($save['cor1'] ?? '#22c55e') ?>44">
+                        <i class="fas fa-shield-halved text-2xl" style="color: <?= htmlspecialchars($save['cor1'] ?? '#22c55e') ?>"></i>
                     </div>
                     <div>
                         <h3 class="text-lg font-bold text-white"><?= htmlspecialchars($save['nome_time']) ?></h3>
                         <p class="text-sm text-slate-400">Treinador: <span class="text-slate-300"><?= htmlspecialchars($save['nome_treinador']) ?></span></p>
+                        <p class="text-xs text-slate-500 mt-0.5">Rodada <?= (int)($save['rodada_atual'] ?? 1) ?> · T<?= (int)$save['temporada'] ?>ª</p>
                     </div>
                 </div>
 
@@ -77,7 +75,6 @@ function fmt_data(string $d): string {
 
                 <p class="text-xs text-slate-600 mb-4"><i class="fas fa-clock mr-1"></i> Salvo em <?= fmt_data($save['updated_at']) ?></p>
 
-                <!-- botão continuar -->
                 <form method="POST" action="?page=saves">
                     <input type="hidden" name="action" value="carregar_save">
                     <input type="hidden" name="slot" value="<?= $slot ?>">
@@ -86,7 +83,6 @@ function fmt_data(string $d): string {
                     </button>
                 </form>
 
-                <!-- botão novo jogo (apaga) -->
                 <button onclick="abrirModalNovo(<?= $slot ?>, true)"
                     class="w-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white font-semibold py-2.5 rounded-xl transition text-sm">
                     <i class="fas fa-rotate-right mr-1.5 text-orange-400"></i> Novo Jogo <span class="text-orange-400 text-xs">(apaga este save)</span>
@@ -94,7 +90,6 @@ function fmt_data(string $d): string {
             </div>
 
             <?php else: ?>
-            <!-- slot vazio -->
             <div class="p-6 flex flex-col items-center justify-center min-h-[280px] text-center">
                 <div class="w-16 h-16 rounded-2xl bg-slate-800 border-2 border-dashed border-slate-700 flex items-center justify-center mb-4">
                     <i class="fas fa-plus text-slate-600 text-xl"></i>
@@ -114,65 +109,93 @@ function fmt_data(string $d): string {
 
 <!-- ── MODAL NOVO JOGO ──────────────────────────────────────────── -->
 <div id="modal-novo" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
-    <!-- backdrop -->
     <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="fecharModal()"></div>
 
-    <div class="relative bg-slate-900 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl z-10">
-        <button onclick="fecharModal()" class="absolute top-4 right-4 text-slate-500 hover:text-white transition">
-            <i class="fas fa-times text-xl"></i>
-        </button>
+    <div class="relative bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl z-10 max-h-[90vh] flex flex-col">
 
-        <div class="text-center mb-6">
-            <div class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-green-500/10 border border-green-500/30 mb-3">
-                <i class="fas fa-futbol text-green-400 text-2xl"></i>
+        <!-- cabeçalho do modal -->
+        <div class="p-6 border-b border-slate-800 flex-shrink-0">
+            <button onclick="fecharModal()" class="absolute top-4 right-4 text-slate-500 hover:text-white transition">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+            <div class="flex items-center gap-3 mb-1">
+                <div class="w-10 h-10 rounded-xl bg-green-500/10 border border-green-500/30 flex items-center justify-center">
+                    <i class="fas fa-futbol text-green-400"></i>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold text-white">Novo Jogo</h3>
+                    <p id="modal-aviso" class="text-xs text-orange-400 hidden">
+                        <i class="fas fa-triangle-exclamation mr-1"></i> O save atual neste slot será apagado!
+                    </p>
+                </div>
             </div>
-            <h3 class="text-xl font-bold text-white">Novo Jogo</h3>
-            <p id="modal-aviso" class="text-sm text-orange-400 mt-1 hidden">
-                <i class="fas fa-triangle-exclamation mr-1"></i> O save atual neste slot será apagado!
-            </p>
         </div>
 
-        <?php if ($msg && $msg_tipo === 'erro'): ?>
+        <!-- corpo rolável -->
+        <div class="overflow-y-auto flex-1 p-6">
+
+            <?php if (isset($msg) && $msg && isset($msg_tipo) && $msg_tipo === 'erro'): ?>
             <div class="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl px-4 py-3 mb-5 text-sm">
                 <i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($msg) ?>
             </div>
-        <?php endif; ?>
+            <?php endif; ?>
 
-        <form method="POST" action="?page=saves" class="space-y-4">
-            <input type="hidden" name="action" value="novo_save">
-            <input type="hidden" name="slot" id="modal-slot" value="1">
+            <form method="POST" action="?page=saves" id="form-novo">
+                <input type="hidden" name="action" value="novo_save">
+                <input type="hidden" name="slot" id="modal-slot" value="1">
+                <input type="hidden" name="time_id" id="modal-time-id" value="">
 
-            <div>
-                <label class="block text-sm text-slate-400 mb-1.5">Nome do treinador</label>
-                <div class="relative">
-                    <i class="fas fa-user-tie absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
-                    <input type="text" name="nome_treinador" required minlength="2" maxlength="50"
-                        class="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
-                        placeholder="Ex: Guardiola">
+                <!-- Nome do treinador -->
+                <div class="mb-5">
+                    <label class="block text-sm font-medium text-slate-300 mb-1.5">Nome do Treinador</label>
+                    <div class="relative">
+                        <i class="fas fa-user-tie absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                        <input type="text" name="nome_treinador" id="inp-treinador" required minlength="2" maxlength="50"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+                            placeholder="Ex: Guardiola" value="<?= htmlspecialchars($_POST['nome_treinador'] ?? '') ?>">
+                    </div>
                 </div>
-            </div>
 
-            <div>
-                <label class="block text-sm text-slate-400 mb-1.5">Nome do time</label>
-                <div class="relative">
-                    <i class="fas fa-shield-halved absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
-                    <input type="text" name="nome_time" required minlength="2" maxlength="60"
-                        class="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
-                        placeholder="Ex: Flamengo">
+                <!-- Seleção de time -->
+                <div class="mb-5">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Escolha seu time</label>
+                    <p id="lbl-time-selecionado" class="text-xs text-slate-500 mb-3">Nenhum time selecionado — clique em um time abaixo</p>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="grade-times">
+                        <?php foreach ($times as $t): ?>
+                        <button type="button"
+                            onclick="selecionarTime(<?= (int)$t['id'] ?>, '<?= addslashes($t['nome']) ?>', '<?= addslashes($t['apelido']) ?>', '<?= addslashes($t['cor1']) ?>', '<?= addslashes($t['cor2']) ?>')"
+                            data-id="<?= $t['id'] ?>"
+                            class="time-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-700 bg-slate-800 hover:border-green-500/50 hover:bg-slate-700 transition-all text-center group">
+
+                            <!-- escudo mini com cores do time -->
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0"
+                                 style="background: linear-gradient(135deg, <?= htmlspecialchars($t['cor1']) ?>, <?= htmlspecialchars($t['cor2']) ?>); color: <?= htmlspecialchars($t['cor2']) === '#FFFFFF' || htmlspecialchars($t['cor2']) === '#ffffff' ? '#000' : '#fff' ?>">
+                                <?= htmlspecialchars($t['apelido']) ?>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-300 group-hover:text-white leading-tight"><?= htmlspecialchars($t['nome']) ?></span>
+
+                            <!-- barra de força -->
+                            <div class="w-full bg-slate-700 rounded-full h-1 mt-0.5">
+                                <div class="h-1 rounded-full" style="width: <?= $t['forca_base'] ?>%; background: <?= htmlspecialchars($t['cor1']) ?>"></div>
+                            </div>
+                            <span class="text-[10px] text-slate-500">Força <?= $t['forca_base'] ?></span>
+                        </button>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
-            </div>
 
-            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-xs text-slate-500">
-                <i class="fas fa-info-circle text-slate-600 mr-1"></i>
-                Você começará na temporada 1 com R$ 10.000.000 de saldo.
-                Seleção do elenco será feita na próxima etapa.
-            </div>
+                <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-xs text-slate-500 mb-5">
+                    <i class="fas fa-info-circle text-slate-600 mr-1"></i>
+                    Temporada 1 · Saldo inicial R$ 10.000.000 · Série A com 20 times · 38 rodadas
+                </div>
 
-            <button type="submit"
-                class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-green-500/20">
-                Começar! <i class="fas fa-arrow-right ml-1"></i>
-            </button>
-        </form>
+                <button type="submit" id="btn-comecar" disabled
+                    class="w-full bg-green-600 hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-green-500/20">
+                    Começar! <i class="fas fa-arrow-right ml-1"></i>
+                </button>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -189,10 +212,30 @@ function fecharModal() {
     modal.classList.add('hidden');
     modal.classList.remove('flex');
 }
+
+function selecionarTime(id, nome, apelido, cor1, cor2) {
+    // Remove seleção anterior
+    document.querySelectorAll('.time-btn').forEach(btn => {
+        btn.classList.remove('border-green-500', 'bg-green-500/10', 'ring-2', 'ring-green-500/40');
+        btn.classList.add('border-slate-700', 'bg-slate-800');
+    });
+
+    // Seleciona este
+    const btn = document.querySelector(`.time-btn[data-id="${id}"]`);
+    if (btn) {
+        btn.classList.add('border-green-500', 'bg-green-500/10', 'ring-2', 'ring-green-500/40');
+        btn.classList.remove('border-slate-700', 'bg-slate-800');
+    }
+
+    document.getElementById('modal-time-id').value = id;
+    document.getElementById('lbl-time-selecionado').innerHTML =
+        `<i class="fas fa-check-circle text-green-400 mr-1"></i><span class="text-green-400 font-semibold">${nome}</span> selecionado`;
+    document.getElementById('btn-comecar').disabled = false;
+}
+
 document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharModal(); });
 
-<?php if ($msg && $msg_tipo === 'erro'): ?>
-// reabre modal se houve erro de validação
+<?php if (isset($msg) && $msg && isset($msg_tipo) && $msg_tipo === 'erro'): ?>
 abrirModalNovo(<?= (int)($_POST['slot'] ?? 1) ?>, <?= ($saves[(int)($_POST['slot'] ?? 1)] !== null ? 'true' : 'false') ?>);
 <?php endif; ?>
 </script>

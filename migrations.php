@@ -15,7 +15,9 @@ function runMigrations(PDO $pdo): void {
             slot TINYINT NOT NULL,
             nome_treinador VARCHAR(100) NOT NULL,
             nome_time VARCHAR(100) NOT NULL,
+            time_id INT DEFAULT NULL,
             temporada INT DEFAULT 1,
+            rodada_atual INT DEFAULT 1,
             saldo BIGINT DEFAULT 10000000,
             dados_json LONGTEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -23,13 +25,115 @@ function runMigrations(PDO $pdo): void {
             UNIQUE KEY uq_usuario_slot (usuario_id, slot),
             FOREIGN KEY (usuario_id) REFERENCES ecofut_usuarios(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS ecofut_times (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            slug VARCHAR(50) UNIQUE NOT NULL,
+            nome VARCHAR(100) NOT NULL,
+            apelido VARCHAR(10) NOT NULL,
+            estado CHAR(2) NOT NULL,
+            divisao TINYINT DEFAULT 1,
+            forca_base INT DEFAULT 65,
+            cor1 VARCHAR(10) DEFAULT '#22c55e',
+            cor2 VARCHAR(10) DEFAULT '#ffffff',
+            estadio VARCHAR(100) DEFAULT '',
+            capacidade INT DEFAULT 30000
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS ecofut_jogadores_base (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            time_id INT NOT NULL,
+            nome VARCHAR(100) NOT NULL,
+            posicao VARCHAR(5) NOT NULL,
+            forca INT DEFAULT 60,
+            idade INT DEFAULT 25,
+            salario INT DEFAULT 50000,
+            sk_goleiro INT DEFAULT 0,
+            sk_agilidade INT DEFAULT 50,
+            sk_passe INT DEFAULT 50,
+            sk_armacao INT DEFAULT 50,
+            sk_desarme INT DEFAULT 50,
+            sk_finalizacao INT DEFAULT 50,
+            sk_tecnica INT DEFAULT 50,
+            FOREIGN KEY (time_id) REFERENCES ecofut_times(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS ecofut_elenco (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            save_id INT NOT NULL,
+            time_id INT NOT NULL,
+            jogador_base_id INT DEFAULT NULL,
+            nome VARCHAR(100) NOT NULL,
+            posicao VARCHAR(5) NOT NULL,
+            forca INT DEFAULT 60,
+            idade INT DEFAULT 25,
+            energia INT DEFAULT 100,
+            moral INT DEFAULT 75,
+            contundido TINYINT DEFAULT 0,
+            suspenso TINYINT DEFAULT 0,
+            salario INT DEFAULT 50000,
+            meses_contrato INT DEFAULT 12,
+            titular TINYINT DEFAULT 0,
+            sk_goleiro INT DEFAULT 0,
+            sk_agilidade INT DEFAULT 50,
+            sk_passe INT DEFAULT 50,
+            sk_armacao INT DEFAULT 50,
+            sk_desarme INT DEFAULT 50,
+            sk_finalizacao INT DEFAULT 50,
+            sk_tecnica INT DEFAULT 50,
+            FOREIGN KEY (save_id) REFERENCES ecofut_saves(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS ecofut_classificacao (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            save_id INT NOT NULL,
+            time_id INT NOT NULL,
+            divisao TINYINT DEFAULT 1,
+            pontos INT DEFAULT 0,
+            jogos INT DEFAULT 0,
+            vitorias INT DEFAULT 0,
+            empates INT DEFAULT 0,
+            derrotas INT DEFAULT 0,
+            gols_pro INT DEFAULT 0,
+            gols_contra INT DEFAULT 0,
+            UNIQUE KEY uq_save_time_div (save_id, time_id, divisao),
+            FOREIGN KEY (save_id) REFERENCES ecofut_saves(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS ecofut_partidas (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            save_id INT NOT NULL,
+            rodada INT NOT NULL,
+            divisao TINYINT DEFAULT 1,
+            time_casa_id INT NOT NULL,
+            time_fora_id INT NOT NULL,
+            gols_casa INT DEFAULT NULL,
+            gols_fora INT DEFAULT NULL,
+            status ENUM('agendada','jogada') DEFAULT 'agendada',
+            log_json TEXT,
+            FOREIGN KEY (save_id) REFERENCES ecofut_saves(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS ecofut_financas (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            save_id INT NOT NULL,
+            categoria VARCHAR(50) NOT NULL,
+            descricao VARCHAR(200) NOT NULL,
+            valor BIGINT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (save_id) REFERENCES ecofut_saves(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ];
 
     foreach ($tabelas as $sql) {
-        try {
-            $pdo->exec($sql);
-        } catch (Exception $e) {
-            error_log('EcoFut migration error: ' . $e->getMessage());
-        }
+        try { $pdo->exec($sql); } catch (Exception $e) { error_log('EcoFut migration: ' . $e->getMessage()); }
     }
+
+    // Seed times genéricos se ainda não existirem
+    try {
+        if ((int)$pdo->query("SELECT COUNT(*) FROM ecofut_times")->fetchColumn() === 0) {
+            require_once __DIR__ . '/tools/seed_teams.php';
+            seedEcofutTimes($pdo);
+        }
+    } catch (Exception $e) { error_log('EcoFut seed: ' . $e->getMessage()); }
 }
