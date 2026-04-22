@@ -5,26 +5,33 @@ $page_data = [];
 if ($page === 'saves' && $db_connected && isset($_SESSION['ecofut_usuario_id'])) {
     $uid = (int)$_SESSION['ecofut_usuario_id'];
 
-    $stmt = $pdo->prepare(
-        "SELECT s.slot, s.nome_treinador, s.nome_time, s.temporada, s.saldo,
-                s.rodada_atual, s.updated_at, t.cor1, t.cor2
-         FROM ecofut_saves s
-         LEFT JOIN ecofut_times t ON t.id = s.time_id
-         WHERE s.usuario_id = ? ORDER BY s.slot ASC"
-    );
-    $stmt->execute([$uid]);
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT s.slot, s.nome_treinador, s.nome_time, s.temporada, s.saldo,
+                    s.rodada_atual, s.updated_at, t.cor1, t.cor2
+             FROM ecofut_saves s
+             LEFT JOIN ecofut_times t ON t.id = s.time_id
+             WHERE s.usuario_id = ? ORDER BY s.slot ASC"
+        );
+        $stmt->execute([$uid]);
 
-    $saves = [1 => null, 2 => null];
-    foreach ($stmt->fetchAll() as $row) {
-        $saves[(int)$row['slot']] = $row;
+        $saves = [1 => null, 2 => null];
+        foreach ($stmt->fetchAll() as $row) {
+            $saves[(int)$row['slot']] = $row;
+        }
+        $page_data['saves'] = $saves;
+
+        // Lista de times para o picker
+        $timesResult = $pdo->query(
+            "SELECT id, nome, apelido, estado, forca_base, cor1, cor2, estadio, capacidade
+             FROM ecofut_times ORDER BY forca_base DESC"
+        );
+        $page_data['times'] = $timesResult ? $timesResult->fetchAll(PDO::FETCH_ASSOC) : [];
+    } catch (Exception $e) {
+        $page_data['saves'] = [1 => null, 2 => null];
+        $page_data['times'] = [];
+        error_log('EcoFut saves page data error: ' . $e->getMessage());
     }
-    $page_data['saves'] = $saves;
-
-    // Lista de times para o picker
-    $page_data['times'] = $pdo->query(
-        "SELECT id, nome, apelido, estado, forca_base, cor1, cor2, estadio, capacidade
-         FROM ecofut_times ORDER BY forca_base DESC"
-    )->fetchAll(PDO::FETCH_ASSOC);
 }
 
 // ── APP PAGE ──────────────────────────────────────────────────────────────────

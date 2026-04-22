@@ -7,7 +7,8 @@ function fmt_saldo(int $v): string {
     if ($v >= 1_000_000) return 'R$ ' . number_format($v / 1_000_000, 1, ',', '.') . 'M';
     return 'R$ ' . number_format($v / 1_000, 0, ',', '.') . 'K';
 }
-function fmt_data(string $d): string {
+function fmt_data(?string $d): string {
+    if (!$d) return '—';
     return date('d/m/Y H:i', strtotime($d));
 }
 ?>
@@ -31,6 +32,18 @@ function fmt_data(string $d): string {
 </nav>
 
 <div class="max-w-5xl mx-auto px-4 py-12">
+
+    <?php if (!($db_connected ?? true)): ?>
+    <div class="flex items-center gap-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl px-5 py-4 mb-8 text-sm">
+        <i class="fas fa-exclamation-triangle text-lg flex-shrink-0"></i>
+        <span>Banco de dados indisponível no momento. Tente novamente em instantes.</span>
+    </div>
+    <?php elseif (empty($times)): ?>
+    <div class="flex items-center gap-3 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 rounded-xl px-5 py-4 mb-8 text-sm">
+        <i class="fas fa-circle-exclamation text-lg flex-shrink-0"></i>
+        <span>Nenhum time disponível. Os dados do jogo podem estar sendo carregados — recarregue a página.</span>
+    </div>
+    <?php endif; ?>
 
     <div class="text-center mb-12">
         <h2 class="text-3xl font-black text-white mb-2">Selecionar Save</h2>
