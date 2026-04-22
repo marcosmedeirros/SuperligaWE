@@ -131,9 +131,21 @@ function runMigrations(PDO $pdo): void {
 
     // Seed times se tabela estiver vazia ou com seed incompleto (< 20 times)
     try {
-        if ((int)$pdo->query("SELECT COUNT(*) FROM ecofut_times")->fetchColumn() < 20) {
+        $timesCount = (int)$pdo->query("SELECT COUNT(*) FROM ecofut_times")->fetchColumn();
+        if ($timesCount < 20) {
+            // Limpa seed parcial para evitar inconsistência
+            if ($timesCount > 0) {
+                $pdo->exec("DELETE FROM ecofut_jogadores_base");
+                $pdo->exec("DELETE FROM ecofut_times");
+            }
             require_once __DIR__ . '/tools/seed_teams.php';
             seedEcofutTimes($pdo);
         }
-    } catch (Exception $e) { error_log('EcoFut seed: ' . $e->getMessage()); }
+    } catch (Exception $e) {
+        error_log('EcoFut seed error: ' . $e->getMessage());
+        // Armazena erro na sessão para diagnóstico
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION['ecofut_seed_erro'] = $e->getMessage();
+        }
+    }
 }

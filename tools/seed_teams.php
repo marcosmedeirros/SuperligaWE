@@ -73,8 +73,11 @@ function seedEcofutTimes(PDO $pdo): void {
 
     $usedNames = [];
 
+    try {
+    $pdo->beginTransaction();
+
     $stmtTime = $pdo->prepare(
-        "INSERT IGNORE INTO ecofut_times (slug,nome,apelido,estado,divisao,forca_base,cor1,cor2,estadio,capacidade)
+        "INSERT INTO ecofut_times (slug,nome,apelido,estado,divisao,forca_base,cor1,cor2,estadio,capacidade)
          VALUES (?,?,?,?,1,?,?,?,?,?)"
     );
     $stmtJog = $pdo->prepare(
@@ -130,5 +133,11 @@ function seedEcofutTimes(PDO $pdo): void {
                 $sk['sk_armacao'], $sk['sk_desarme'], $sk['sk_finalizacao'], $sk['sk_tecnica'],
             ]);
         }
+    }
+
+    $pdo->commit();
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e; // relança para o caller registrar o erro
     }
 }

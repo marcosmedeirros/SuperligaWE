@@ -39,9 +39,16 @@ function fmt_data(?string $d): string {
         <span>Banco de dados indisponível no momento. Tente novamente em instantes.</span>
     </div>
     <?php elseif (empty($times)): ?>
+    <?php $seedErro = $_SESSION['ecofut_seed_erro'] ?? null; unset($_SESSION['ecofut_seed_erro']); ?>
     <div class="flex items-center gap-3 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 rounded-xl px-5 py-4 mb-8 text-sm">
         <i class="fas fa-circle-exclamation text-lg flex-shrink-0"></i>
-        <span>Nenhum time disponível. Os dados do jogo podem estar sendo carregados — recarregue a página.</span>
+        <div>
+            <span>Nenhum time disponível. Os dados do jogo ainda não foram carregados.</span>
+            <?php if ($seedErro): ?>
+            <br><span class="text-xs text-red-400 mt-1 block">Erro técnico: <?= htmlspecialchars($seedErro) ?></span>
+            <?php endif; ?>
+            <br><a href="?page=saves" class="text-yellow-300 underline text-xs mt-1 inline-block">Clique aqui para tentar novamente</a>
+        </div>
     </div>
     <?php endif; ?>
 
