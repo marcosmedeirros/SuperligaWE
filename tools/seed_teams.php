@@ -1,29 +1,29 @@
 <?php
 function seedEcofutTimes(PDO $pdo): void {
 
-    // ── 20 times Série A ───────────────────────────────────────────────────────
+    // ── 20 times fictícios Série A ────────────────────────────────────────────
     $times = [
         // slug, nome, apelido, estado, forca, cor1, cor2, estadio, capacidade
-        ['flamengo',     'Flamengo',        'FLA','RJ', 82,'#CC0000','#000000','Maracanã',          78838],
-        ['palmeiras',    'Palmeiras',        'PAL','SP', 80,'#006400','#FFFFFF','Allianz Parque',    43713],
-        ['atletico_mg',  'Atlético-MG',      'GAL','MG', 79,'#000000','#FFFFFF','Arena MRV',         46000],
-        ['fluminense',   'Fluminense',       'FLU','RJ', 76,'#8B0000','#006400','Maracanã',          78838],
-        ['botafogo',     'Botafogo',         'BOT','RJ', 75,'#000000','#CCCCCC','Nilton Santos',     46000],
-        ['corinthians',  'Corinthians',      'COR','SP', 74,'#000000','#CCCCCC','Neo Química Arena', 47605],
-        ['sao_paulo',    'São Paulo',        'SAO','SP', 73,'#CC0000','#FFFFFF','MorumBIS',          72000],
-        ['internacional','Internacional',    'INT','RS', 72,'#CC0000','#FFFFFF','Beira-Rio',         50128],
-        ['gremio',       'Grêmio',           'GRE','RS', 71,'#0044AA','#000000','Arena Grêmio',      55000],
-        ['cruzeiro',     'Cruzeiro',         'CRU','MG', 70,'#001F8A','#FFFFFF','Mineirão',          61846],
-        ['vasco',        'Vasco da Gama',    'VAS','RJ', 68,'#000000','#CCCCCC','São Januário',      21000],
-        ['santos',       'Santos',           'SAN','SP', 67,'#FFFFFF','#000000','Vila Belmiro',      16798],
-        ['athletico_pr', 'Athletico-PR',     'CAP','PR', 68,'#CC0000','#000000','Ligga Arena',       32000],
-        ['fortaleza',    'Fortaleza',        'FOR','CE', 67,'#003366','#CC0000','Castelão',          63903],
-        ['bragantino',   'Bragantino',       'RBB','SP', 66,'#CC0000','#FFFFFF','Nabi Abi Chedid',   18000],
-        ['bahia',        'Bahia',            'BAH','BA', 65,'#0056A2','#CC0000','Arena Fonte Nova',  47907],
-        ['sport',        'Sport Recife',     'SPT','PE', 63,'#CC0000','#000000','Ilha do Retiro',    22000],
-        ['ceara',        'Ceará',            'CEA','CE', 63,'#000000','#CCCCCC','Castelão',          63903],
-        ['coritiba',     'Coritiba',         'COT','PR', 62,'#006400','#FFFFFF','Couto Pereira',     42700],
-        ['criciuma',     'Criciúma',         'CRI','SC', 61,'#FFD700','#000000','Heriberto Hulse',   21000],
+        ['dragoes',    'Dragões FC',       'DRG','SP', 82,'#CC0000','#FFD700','Estádio Vulcão',      62000],
+        ['leoes',      'Leões EC',         'LEO','RJ', 80,'#FF8C00','#1C1C1C','Arena do Rei',        55000],
+        ['fenix',      'Fênix CA',         'FEN','MG', 79,'#8B0000','#FF6600','Arena Fênix',         48000],
+        ['falcoes',    'Falcões GE',       'FAL','RS', 76,'#003366','#CCCCCC','Arena das Asas',      50000],
+        ['lobos',      'Lobos SC',         'LOB','PE', 75,'#4B0082','#FFFFFF','Estádio do Norte',    40000],
+        ['panteras',   'Panteras AF',      'PAN','BA', 74,'#1A1A2E','#FFD700','Arena Pantera',       45000],
+        ['tubaraoes',  'Tubarões FC',      'TUB','SC', 73,'#00008B','#FFFFFF','Estádio Oceânico',    38000],
+        ['aguias',     'Águias CE',        'AGU','GO', 72,'#006400','#FFD700','Arena das Alturas',   42000],
+        ['vulcoes',    'Vulcões Sport',    'VUL','CE', 71,'#8B0000','#FF4500','Estádio do Vulcão',   36000],
+        ['trovoes',    'Trovões AF',       'TRO','AM', 70,'#1C1C1C','#00BFFF','Arena Amazônia',      48000],
+        ['corsarios',  'Corsários SC',     'COS','RN', 68,'#000080','#FFFFFF','Estádio Costeiro',    28000],
+        ['templarios', 'Templários FC',    'TEM','DF', 68,'#8B0000','#CCCCCC','Arena Central',       35000],
+        ['samurais',   'Samurais CA',      'SAM','RJ', 67,'#CC0000','#FFFFFF','Estádio Oriente',     32000],
+        ['guerreiros', 'Guerreiros EC',    'GUE','PR', 67,'#006400','#FFD700','Arena Guerreira',     30000],
+        ['titanicos',  'Titânicos SC',     'TIT','SP', 66,'#4169E1','#FFFFFF','Estádio Titan',       40000],
+        ['nomades',    'Nômades GF',       'NOM','MT', 65,'#8B4513','#FFD700','Arena Cerrado',       25000],
+        ['ursos',      'Ursos Esporte',    'URS','RS', 63,'#4B0082','#CCCCCC','Estádio Polar',       28000],
+        ['eternos',    'Eternos CF',       'ETE','MG', 63,'#2F4F4F','#FFD700','Arena Eterna',        32000],
+        ['fantasmas',  'Fantasmas AC',     'FAN','GO', 62,'#1C1C1C','#00FF7F','Estádio Sombra',      22000],
+        ['nubivagos',  'Nubivagos FC',     'NUB','SC', 61,'#483D8B','#FFFFFF','Arena das Nuvens',    24000],
     ];
 
     $primeiroNomes = ['Gabriel','Lucas','Felipe','João','Rafael','Mateus','Pedro','André','Diego','Thiago',
@@ -74,7 +74,7 @@ function seedEcofutTimes(PDO $pdo): void {
     $usedNames = [];
 
     $stmtTime = $pdo->prepare(
-        "INSERT INTO ecofut_times (slug,nome,apelido,estado,divisao,forca_base,cor1,cor2,estadio,capacidade)
+        "INSERT IGNORE INTO ecofut_times (slug,nome,apelido,estado,divisao,forca_base,cor1,cor2,estadio,capacidade)
          VALUES (?,?,?,?,1,?,?,?,?,?)"
     );
     $stmtJog = $pdo->prepare(

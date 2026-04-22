@@ -129,9 +129,9 @@ function runMigrations(PDO $pdo): void {
         try { $pdo->exec($sql); } catch (Exception $e) { error_log('EcoFut migration: ' . $e->getMessage()); }
     }
 
-    // Seed times genéricos se ainda não existirem
+    // Seed times se tabela estiver vazia ou com seed incompleto (< 20 times)
     try {
-        if ((int)$pdo->query("SELECT COUNT(*) FROM ecofut_times")->fetchColumn() === 0) {
+        if ((int)$pdo->query("SELECT COUNT(*) FROM ecofut_times")->fetchColumn() < 20) {
             require_once __DIR__ . '/tools/seed_teams.php';
             seedEcofutTimes($pdo);
         }
