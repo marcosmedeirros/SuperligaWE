@@ -77,6 +77,14 @@ if ($action === 'novo_save') {
     if (strlen($nome_treinador) < 2) { $msg = 'Nome do treinador muito curto.'; $msg_tipo = 'erro'; goto fim; }
     if ($time_id <= 0)               { $msg = 'Selecione um time para continuar.'; $msg_tipo = 'erro'; goto fim; }
 
+    // Valida que o usuário da sessão existe no banco atual
+    $stmtUser = $pdo->prepare("SELECT id FROM ecofut_usuarios WHERE id = ?");
+    $stmtUser->execute([$usuario_id]);
+    if (!$stmtUser->fetch()) {
+        session_destroy();
+        header("Location: ?page=login"); exit;
+    }
+
     // Verifica se time existe
     $stmtTime = $pdo->prepare("SELECT nome, cor1 FROM ecofut_times WHERE id = ?");
     $stmtTime->execute([$time_id]);
@@ -85,37 +93,44 @@ if ($action === 'novo_save') {
 
     $nome_time = $timeRow['nome'];
 
-    // Apaga dados do slot anterior (cascata cuida de elenco, partidas, etc.)
-    $saveAnt = $pdo->prepare("SELECT id FROM ecofut_saves WHERE usuario_id = ? AND slot = ?");
-    $saveAnt->execute([$usuario_id, $slot]);
-    $antRow = $saveAnt->fetch();
-    if ($antRow) {
-        $pdo->prepare("DELETE FROM ecofut_saves WHERE id = ?")->execute([$antRow['id']]);
+    try {
+        // Apaga dados do slot anterior (cascata cuida de elenco, partidas, etc.)
+        $saveAnt = $pdo->prepare("SELECT id FROM ecofut_saves WHERE usuario_id = ? AND slot = ?");
+        $saveAnt->execute([$usuario_id, $slot]);
+        $antRow = $saveAnt->fetch();
+        if ($antRow) {
+            $pdo->prepare("DELETE FROM ecofut_saves WHERE id = ?")->execute([$antRow['id']]);
+        }
+
+        $dados_iniciais = json_encode([
+            'formacao' => '4-3-3',
+            'estilo'   => 'equilibrado',
+        ]);
+
+        $stmt = $pdo->prepare(
+            "INSERT INTO ecofut_saves
+             (usuario_id, slot, nome_treinador, nome_time, time_id, temporada, rodada_atual, saldo, dados_json)
+             VALUES (?, ?, ?, ?, ?, 1, 1, 10000000, ?)"
+        );
+        $stmt->execute([$usuario_id, $slot, $nome_treinador, $nome_time, $time_id, $dados_iniciais]);
+        $save_id = (int)$pdo->lastInsertId();
+
+        // Inicializa temporada (elenco, fixtures, classificação)
+        require_once __DIR__ . '/engine/season.php';
+        inicializarTemporada($pdo, $save_id, $time_id);
+
+        $_SESSION['ecofut_save_id']   = $save_id;
+        $_SESSION['ecofut_save_slot'] = $slot;
+        $_SESSION['ecofut_nome_time'] = $nome_time;
+
+        header("Location: ?page=app");
+        exit;
+    } catch (Exception $e) {
+        error_log('EcoFut novo_save error: ' . $e->getMessage());
+        $msg = 'Erro ao criar save: ' . $e->getMessage();
+        $msg_tipo = 'erro';
+        goto fim;
     }
-
-    $dados_iniciais = json_encode([
-        'formacao' => '4-3-3',
-        'estilo'   => 'equilibrado',
-    ]);
-
-    $stmt = $pdo->prepare(
-        "INSERT INTO ecofut_saves
-         (usuario_id, slot, nome_treinador, nome_time, time_id, temporada, rodada_atual, saldo, dados_json)
-         VALUES (?, ?, ?, ?, ?, 1, 1, 10000000, ?)"
-    );
-    $stmt->execute([$usuario_id, $slot, $nome_treinador, $nome_time, $time_id, $dados_iniciais]);
-    $save_id = (int)$pdo->lastInsertId();
-
-    // Inicializa temporada (elenco, fixtures, classificação)
-    require_once __DIR__ . '/engine/season.php';
-    inicializarTemporada($pdo, $save_id, $time_id);
-
-    $_SESSION['ecofut_save_id']   = $save_id;
-    $_SESSION['ecofut_save_slot'] = $slot;
-    $_SESSION['ecofut_nome_time'] = $nome_time;
-
-    header("Location: ?page=app");
-    exit;
 }
 
 // ── CARREGAR SAVE ─────────────────────────────────────────────────────────────
