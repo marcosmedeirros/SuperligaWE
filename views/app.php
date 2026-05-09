@@ -451,40 +451,21 @@ $posicoesCampo = [
 
         <?php if (isset($page_data['log_partida'])): $logP = $page_data['log_partida']; ?>
         <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 mb-5">
-            <p class="text-xs text-slate-500 text-center mb-3">Resultado — Rodada <?= $logP['rodada'] ?></p>
+            <p class="text-xs text-slate-500 text-center mb-4">Rodada <?= $logP['rodada'] ?></p>
             <div class="flex items-center justify-center gap-6 mb-5">
                 <div class="text-center flex-1">
                     <p class="text-sm font-bold <?= (int)($logP['time_casa_id'] ?? 0) === $timeId ? 'text-green-400' : 'text-slate-300' ?>"><?= htmlspecialchars($logP['nome_casa']) ?></p>
-                    <p class="text-5xl font-black text-white"><?= $logP['gols_casa'] ?></p>
+                    <p class="text-xs text-slate-600 mt-1">Casa</p>
                 </div>
-                <div class="text-2xl text-slate-600 font-bold">–</div>
+                <div class="text-2xl text-slate-600 font-bold">vs</div>
                 <div class="text-center flex-1">
                     <p class="text-sm font-bold <?= (int)($logP['time_fora_id'] ?? 0) === $timeId ? 'text-green-400' : 'text-slate-300' ?>"><?= htmlspecialchars($logP['nome_fora']) ?></p>
-                    <p class="text-5xl font-black text-white"><?= $logP['gols_fora'] ?></p>
+                    <p class="text-xs text-slate-600 mt-1">Fora</p>
                 </div>
             </div>
-            <button onclick="abrirViewer()" class="w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2 mb-3">
-                <i class="fas fa-play-circle text-base"></i> Assistir Replay da Partida
+            <button onclick="abrirViewer()" class="w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2">
+                <i class="fas fa-play-circle text-base"></i> Ver Partida
             </button>
-            <!-- Resumo rápido gols -->
-            <?php
-            $golasCasa = array_filter($logP['eventos'] ?? [], fn($e) => $e['tipo'] === 'gol' && $e['time'] === 'casa');
-            $golasFora = array_filter($logP['eventos'] ?? [], fn($e) => $e['tipo'] === 'gol' && $e['time'] === 'fora');
-            if (!empty($golasCasa) || !empty($golasFora)):
-            ?>
-            <div class="flex gap-4 text-xs text-slate-400 border-t border-slate-800 pt-3">
-                <div class="flex-1">
-                    <?php foreach ($golasCasa as $g): ?>
-                    <p><i class="fas fa-futbol text-green-400 mr-1"></i><?= $g['minuto'] ?>' <?= htmlspecialchars($g['jogador']) ?><?= !empty($g['assistido']) ? ' <span class="text-slate-500">(' . htmlspecialchars($g['assistido']) . ')</span>' : '' ?></p>
-                    <?php endforeach; ?>
-                </div>
-                <div class="flex-1 text-right">
-                    <?php foreach ($golasFora as $g): ?>
-                    <p><?= $g['minuto'] ?>' <?= htmlspecialchars($g['jogador']) ?> <i class="fas fa-futbol text-red-400 ml-1"></i></p>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-            <?php endif; ?>
         </div>
 
         <script>
@@ -785,6 +766,7 @@ function trocarAba(id) {
 
 <?php if (isset($page_data['log_partida'])): ?>
 trocarAba('jogar');
+setTimeout(() => { if (typeof abrirViewer === 'function') abrirViewer(); }, 200);
 <?php endif; ?>
 <?php if ($flashAba): ?>
 trocarAba('<?= htmlspecialchars($flashAba) ?>');
@@ -1117,20 +1099,33 @@ trocarAba('elenco');
         return '#f87171';
     }
 
+    const POS_ORDER = {GOL:0,ZAG:1,LD:2,LE:3,VOL:4,MC:5,MEI:6,PE:7,PD:8,ATA:9};
+
     function mvRenderNotas() {
         const el = document.getElementById('mv-notas');
         if (!el) return;
-        const sorted = Object.entries(mvNotas).sort((a,b) => b[1].nota - a[1].nota);
-        el.innerHTML = sorted.map(([nome, d]) => {
+        const entries = Object.entries(mvNotas);
+        const titulares = entries.filter(([,d]) => d.titular)
+            .sort((a,b) => (POS_ORDER[a[1].posicao] ?? 99) - (POS_ORDER[b[1].posicao] ?? 99));
+        const banco = entries.filter(([,d]) => !d.titular);
+
+        function renderRow([nome, d]) {
             const nc = notaCor(d.nota);
             const last = nome.split(' ').pop();
+            const pos = d.posicao ? `<span style="font-size:8px;color:#64748b;width:22px;flex-shrink:0">${d.posicao}</span>` : '';
             const badges = (d.gols > 0 ? `<span style="font-size:9px">⚽${d.gols}</span>` : '') + (d.assists > 0 ? `<span style="font-size:9px;color:#60a5fa">🅰${d.assists}</span>` : '');
             return `<div style="display:flex;align-items:center;gap:4px;padding:3px 6px;border-radius:6px;background:rgba(30,41,59,0.5)">
-                <span style="font-size:10px;color:#94a3b8;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${last}</span>
+                ${pos}<span style="font-size:10px;color:#94a3b8;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${last}</span>
                 ${badges}
                 <span style="font-size:11px;font-weight:900;color:${nc};flex-shrink:0">${d.nota.toFixed(1)}</span>
             </div>`;
-        }).join('');
+        }
+
+        const header = (label) => `<div style="font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;padding:5px 6px 2px">${label}</div>`;
+        let html = '';
+        if (titulares.length) html += header('Titulares') + titulares.map(renderRow).join('');
+        if (banco.length)    html += header('Banco')     + banco.map(renderRow).join('');
+        el.innerHTML = html;
     }
 
     function mvAddEvento(ev, nomeCasa, nomeFora, meuTimeId) {
@@ -1248,7 +1243,7 @@ trocarAba('elenco');
 
         // Init notas
         mvNotas = {};
-        (d.elenco_notas || []).forEach(j => { mvNotas[j.nome] = {nota: 6.0, gols: 0, assists: 0}; });
+        (d.elenco_notas || []).forEach(j => { mvNotas[j.nome] = {nota: 6.0, gols: 0, assists: 0, posicao: j.posicao || '', titular: !!j.titular}; });
 
         // Set UI
         document.getElementById('mv-nome-casa').textContent = d.nome_casa;
