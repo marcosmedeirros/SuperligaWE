@@ -119,34 +119,54 @@ function poissonSample(float $lambda): int {
 function gerarLog(array $casa, array $fora, int $golsCasa, int $golsFora): array {
     $eventos = [];
 
-    // Distribuir minutos dos gols
     $minutosCasa = sortedRandMinutes($golsCasa);
     $minutosFora = sortedRandMinutes($golsFora);
 
     $artCasa = artilheirosDisponiveis($casa['jogadores'] ?? []);
     $artFora = artilheirosDisponiveis($fora['jogadores'] ?? []);
+    $passCasa = passadoresDisponiveis($casa['jogadores'] ?? []);
+    $passFora = passadoresDisponiveis($fora['jogadores'] ?? []);
 
     foreach ($minutosCasa as $min) {
+        $scorer = sortearArtilheiro($artCasa);
         $eventos[] = [
-            'tipo'    => 'gol',
-            'minuto'  => $min,
-            'time'    => 'casa',
-            'time_id' => $casa['id'] ?? 0,
-            'jogador' => sortearArtilheiro($artCasa),
+            'tipo'      => 'gol',
+            'minuto'    => $min,
+            'time'      => 'casa',
+            'time_id'   => $casa['id'] ?? 0,
+            'jogador'   => $scorer,
+            'assistido' => lcg_value() > 0.25 ? sortearPassador($passCasa, $scorer) : null,
         ];
     }
     foreach ($minutosFora as $min) {
+        $scorer = sortearArtilheiro($artFora);
         $eventos[] = [
-            'tipo'    => 'gol',
-            'minuto'  => $min,
-            'time'    => 'fora',
-            'time_id' => $fora['id'] ?? 0,
-            'jogador' => sortearArtilheiro($artFora),
+            'tipo'      => 'gol',
+            'minuto'    => $min,
+            'time'      => 'fora',
+            'time_id'   => $fora['id'] ?? 0,
+            'jogador'   => $scorer,
+            'assistido' => lcg_value() > 0.25 ? sortearPassador($passFora, $scorer) : null,
         ];
     }
 
-    // Cartões amarelos (2-5 por partida em média)
-    $nAmarelos = max(0, (int)round(lcg_value() * 4 + 1));
+    // Chutes defendidos (3-6 por time)
+    foreach ([['casa', $casa], ['fora', $fora]] as [$lado, $time]) {
+        $nChutes = rand(3, 6);
+        $art = $lado === 'casa' ? $artCasa : $artFora;
+        for ($i = 0; $i < $nChutes; $i++) {
+            $eventos[] = [
+                'tipo'    => 'defesa',
+                'minuto'  => rand(1, 90),
+                'time'    => $lado,
+                'time_id' => $time['id'] ?? 0,
+                'jogador' => sortearArtilheiro($art),
+            ];
+        }
+    }
+
+    // Cartões amarelos
+    $nAmarelos = rand(2, 5);
     for ($i = 0; $i < $nAmarelos; $i++) {
         $eCasa = lcg_value() > 0.5;
         $jogs  = $eCasa ? ($casa['jogadores'] ?? []) : ($fora['jogadores'] ?? []);
@@ -162,7 +182,24 @@ function gerarLog(array $casa, array $fora, int $golsCasa, int $golsFora): array
         }
     }
 
-    // Cartão vermelho (5% de chance por partida)
+    // Faltas (4-8 por partida)
+    $nFaltas = rand(4, 8);
+    for ($i = 0; $i < $nFaltas; $i++) {
+        $eCasa = lcg_value() > 0.5;
+        $jogs  = $eCasa ? ($casa['jogadores'] ?? []) : ($fora['jogadores'] ?? []);
+        if (!empty($jogs)) {
+            $j = $jogs[array_rand($jogs)];
+            $eventos[] = [
+                'tipo'    => 'falta',
+                'minuto'  => rand(1, 90),
+                'time'    => $eCasa ? 'casa' : 'fora',
+                'time_id' => $eCasa ? ($casa['id'] ?? 0) : ($fora['id'] ?? 0),
+                'jogador' => $j['nome'] ?? 'Jogador',
+            ];
+        }
+    }
+
+    // Cartão vermelho (5% chance)
     if (lcg_value() < 0.05) {
         $eCasa = lcg_value() > 0.5;
         $jogs  = $eCasa ? ($casa['jogadores'] ?? []) : ($fora['jogadores'] ?? []);
@@ -180,6 +217,33 @@ function gerarLog(array $casa, array $fora, int $golsCasa, int $golsFora): array
 
     usort($eventos, fn($a, $b) => $a['minuto'] <=> $b['minuto']);
     return $eventos;
+}
+
+function passadoresDisponiveis(array $jogadores): array {
+    if (empty($jogadores)) return [['nome' => 'Jogador', 'sk_armacao' => 50]];
+    $ativos = array_filter($jogadores, fn($j) => !($j['contundido'] ?? 0) && !($j['suspenso'] ?? 0));
+    $midfield = array_filter($ativos ?: $jogadores, fn($j) => in_array($j['posicao'] ?? '', ['MC','MEI','VOL','PE','PD','LD','LE']));
+    return array_values(!empty($midfield) ? $midfield : ($ativos ?: $jogadores));
+}
+
+function sortearPassador(array $jogadores, string $scorer): string {
+    $jogs = array_values(array_filter($jogadores, fn($j) => ($j['nome'] ?? '') !== $scorer));
+    if (empty($jogs)) return '';
+    $totalPeso = 0;
+    $pesos = [];
+    foreach ($jogs as $j) {
+        $arm  = $j['sk_armacao'] ?? 50;
+        $p    = max(1, $arm);
+        $pesos[] = $p;
+        $totalPeso += $p;
+    }
+    $r = lcg_value() * $totalPeso;
+    $acc = 0;
+    foreach ($jogs as $i => $j) {
+        $acc += $pesos[$i];
+        if ($r <= $acc) return $j['nome'] ?? '';
+    }
+    return $jogs[0]['nome'] ?? '';
 }
 
 function sortedRandMinutes(int $n): array {

@@ -3,6 +3,7 @@ session_start();
 date_default_timezone_set('America/Sao_Paulo');
 
 require __DIR__ . '/config.php';
+require __DIR__ . '/engine/helpers.php';
 require __DIR__ . '/migrations.php';
 
 if ($db_connected) {
