@@ -1,8 +1,8 @@
 <?php
 $db_host = 'localhost';
-$db_name = 'u289267434_u289267434_fut';
-$db_user = 'u289267434_u289267434_fut';
-$db_pass = 'Tu#@EX/K>&=2';
+$db_name = 'u289267434_ecofut';
+$db_user = 'u289267434_ecofut';
+$db_pass = 'Zonete@13';
 
 $pdo = null;
 $db_connected = false;
