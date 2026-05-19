@@ -129,6 +129,20 @@ function runMigrations(PDO $pdo): void {
         try { $pdo->exec($sql); } catch (Exception $e) { error_log('EcoFut migration: ' . $e->getMessage()); }
     }
 
+    // Adiciona colunas de estatísticas ao elenco (compatível com MySQL 5.7)
+    try {
+        $hasCol = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ecofut_elenco' AND COLUMN_NAME = 'partidas'")->fetchColumn();
+        if (!$hasCol) {
+            $pdo->exec("ALTER TABLE ecofut_elenco
+                ADD COLUMN partidas   INT   DEFAULT 0,
+                ADD COLUMN gols       INT   DEFAULT 0,
+                ADD COLUMN assists    INT   DEFAULT 0,
+                ADD COLUMN amarelos   INT   DEFAULT 0,
+                ADD COLUMN vermelhos  INT   DEFAULT 0,
+                ADD COLUMN nota_total FLOAT DEFAULT 0");
+        }
+    } catch (Exception $e) { error_log('EcoFut migration stats: ' . $e->getMessage()); }
+
     // Seed times se tabela estiver vazia ou com seed incompleto (< 20 times)
     try {
         $timesCount = (int)$pdo->query("SELECT COUNT(*) FROM ecofut_times")->fetchColumn();

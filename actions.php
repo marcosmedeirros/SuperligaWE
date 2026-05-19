@@ -211,6 +211,60 @@ if ($action === 'avancar_rodada') {
             'eventos'      => $pu['log'],
             'elenco_notas' => $elencoNotas,
         ];
+
+        // Atualiza estatísticas dos jogadores na DB
+        $timeUsuId = (int)($resultado['time_usuario_id'] ?? 0);
+        $notasCalc = [];
+        foreach ($elencoNotas as $j) $notasCalc[$j['nome']] = 6.0;
+
+        $evStats = []; // nome → [gols, assists, amarelos, vermelhos]
+        foreach ($pu['log'] as $ev) {
+            $isMeu = (int)($ev['time_id'] ?? 0) === $timeUsuId;
+            $nome  = $ev['jogador'] ?? '';
+            if ($ev['tipo'] === 'gol') {
+                if ($isMeu && isset($notasCalc[$nome])) {
+                    $notasCalc[$nome] = min(10, $notasCalc[$nome] + 1.33);
+                    if (!isset($evStats[$nome])) $evStats[$nome] = [0,0,0,0];
+                    $evStats[$nome][0]++;
+                }
+                if ($isMeu && !empty($ev['assistido'])) {
+                    $a = $ev['assistido'];
+                    if (isset($notasCalc[$a])) $notasCalc[$a] = min(10, $notasCalc[$a] + 1.0);
+                    if (!isset($evStats[$a])) $evStats[$a] = [0,0,0,0];
+                    $evStats[$a][1]++;
+                }
+                if (!$isMeu) {
+                    foreach ($notasCalc as &$n) $n = max(1, $n - 0.1);
+                    unset($n);
+                }
+            } elseif ($ev['tipo'] === 'defesa' && $isMeu && isset($notasCalc[$nome])) {
+                $notasCalc[$nome] = min(10, $notasCalc[$nome] + 0.4);
+            } elseif ($ev['tipo'] === 'amarelo' && $isMeu) {
+                if (isset($notasCalc[$nome])) $notasCalc[$nome] = max(1, $notasCalc[$nome] - 0.5);
+                if (!isset($evStats[$nome])) $evStats[$nome] = [0,0,0,0];
+                $evStats[$nome][2]++;
+            } elseif ($ev['tipo'] === 'vermelho' && $isMeu) {
+                if (isset($notasCalc[$nome])) $notasCalc[$nome] = max(1, $notasCalc[$nome] - 1.5);
+                if (!isset($evStats[$nome])) $evStats[$nome] = [0,0,0,0];
+                $evStats[$nome][3]++;
+            }
+        }
+
+        $stmtStats = $pdo->prepare(
+            "UPDATE ecofut_elenco
+             SET partidas   = partidas   + 1,
+                 gols       = gols       + ?,
+                 assists    = assists    + ?,
+                 amarelos   = amarelos   + ?,
+                 vermelhos  = vermelhos  + ?,
+                 nota_total = nota_total + ?
+             WHERE id = ? AND save_id = ?"
+        );
+        foreach ($elencoNotas as $j) {
+            $evs  = $evStats[$j['nome']] ?? [0,0,0,0];
+            $nota = $notasCalc[$j['nome']] ?? 6.0;
+            $stmtStats->execute([$evs[0], $evs[1], $evs[2], $evs[3], $nota, $j['id'], $saveId]);
+        }
     } else {
         unset($_SESSION['ecofut_log_partida']);
     }

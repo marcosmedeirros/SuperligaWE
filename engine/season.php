@@ -228,6 +228,7 @@ function avancarRodada(PDO $pdo, int $saveId): array {
         'rodada'          => $rodada,
         'resultados'      => $resultados,
         'partida_usuario' => $partidaUsuario,
+        'time_usuario_id' => $timeUsuarioId,
     ];
 }
 

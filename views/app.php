@@ -129,12 +129,13 @@ $posicoesCampo = [
     <div class="max-w-7xl mx-auto px-3 flex gap-0.5 overflow-x-auto pb-0 border-t border-slate-800">
         <?php
         $abas = [
-            ['id'=>'dashboard',  'icon'=>'fa-house',         'label'=>'Início'],
-            ['id'=>'elenco',     'icon'=>'fa-users',         'label'=>'Elenco'],
-            ['id'=>'campeonato', 'icon'=>'fa-trophy',        'label'=>'Campeonato'],
-            ['id'=>'jogar',      'icon'=>'fa-play',          'label'=>'Jogar'],
-            ['id'=>'financas',   'icon'=>'fa-coins',         'label'=>'Finanças'],
-            ['id'=>'mercado',    'icon'=>'fa-arrows-rotate', 'label'=>'Mercado'],
+            ['id'=>'dashboard',    'icon'=>'fa-house',         'label'=>'Início'],
+            ['id'=>'elenco',       'icon'=>'fa-users',         'label'=>'Elenco'],
+            ['id'=>'campeonato',   'icon'=>'fa-trophy',        'label'=>'Campeonato'],
+            ['id'=>'jogar',        'icon'=>'fa-play',          'label'=>'Jogar'],
+            ['id'=>'estatisticas', 'icon'=>'fa-chart-bar',     'label'=>'Estatísticas'],
+            ['id'=>'financas',     'icon'=>'fa-coins',         'label'=>'Finanças'],
+            ['id'=>'mercado',      'icon'=>'fa-arrows-rotate', 'label'=>'Mercado'],
         ];
         foreach ($abas as $i => $aba): ?>
         <button onclick="trocarAba('<?= $aba['id'] ?>')" id="tab-btn-<?= $aba['id'] ?>"
@@ -551,8 +552,8 @@ $posicoesCampo = [
             <div class="flex-1 text-left">
                 <p id="mv-nome-fora" class="text-sm font-bold text-white truncate"></p>
             </div>
-            <!-- Fechar -->
-            <button onclick="fecharViewer()" class="ml-2 text-slate-500 hover:text-white transition flex-shrink-0">
+            <!-- Fechar (só aparece depois do fim de jogo) -->
+            <button id="mv-close-btn" onclick="fecharViewer()" class="ml-2 text-slate-500 hover:text-white transition flex-shrink-0" style="display:none">
                 <i class="fas fa-times text-lg"></i>
             </button>
         </div>
@@ -580,6 +581,9 @@ $posicoesCampo = [
             <button id="mv-btn-play" onclick="mvTogglePlay()" class="bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition flex items-center gap-1.5">
                 <i id="mv-play-icon" class="fas fa-pause"></i> <span id="mv-play-label">Pausar</span>
             </button>
+            <button id="mv-btn-subs" onclick="mvToggleSubs()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition flex items-center gap-1.5">
+                <i class="fas fa-exchange-alt"></i> <span id="mv-subs-label">Subs 0/5</span>
+            </button>
             <div class="flex items-center gap-2">
                 <span class="text-xs text-slate-500">Velocidade:</span>
                 <?php foreach ([1=>0.9,2=>0.45,4=>0.2] as $spd=>$delay): ?>
@@ -594,7 +598,174 @@ $posicoesCampo = [
             </div>
         </div>
     </div>
+
+    <!-- Painel de substituições (overlay dentro do viewer) -->
+    <div id="mv-sub-panel" class="hidden absolute inset-0 bg-slate-950/96 z-10 flex flex-col p-4" style="position:absolute">
+        <div class="max-w-lg mx-auto w-full flex flex-col flex-1 min-h-0">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-white font-bold text-sm"><i class="fas fa-exchange-alt text-yellow-400 mr-2"></i>Substituição (<span id="mv-sub-count">0</span>/5 feitas)</h3>
+                <button onclick="mvToggleSubs()" class="text-slate-400 hover:text-white transition"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="flex gap-3 flex-1 overflow-hidden">
+                <div class="flex-1 flex flex-col min-h-0">
+                    <p class="text-xs text-red-400 font-bold uppercase mb-2">Sai (Campo)</p>
+                    <div id="mv-sub-list-out" class="flex-1 overflow-y-auto space-y-1 min-h-0"></div>
+                </div>
+                <div class="w-px bg-slate-800 flex-shrink-0 self-stretch"></div>
+                <div class="flex-1 flex flex-col min-h-0">
+                    <p class="text-xs text-green-400 font-bold uppercase mb-2">Entra (Banco)</p>
+                    <div id="mv-sub-list-in" class="flex-1 overflow-y-auto space-y-1 min-h-0"></div>
+                </div>
+            </div>
+            <button id="mv-sub-confirm" onclick="mvConfirmSub()" disabled class="mt-4 w-full bg-green-700 hover:bg-green-600 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold py-3 rounded-xl transition text-sm">
+                <i class="fas fa-check mr-2"></i>Confirmar Substituição
+            </button>
+        </div>
+    </div>
+
+    <!-- Popup fim de jogo -->
+    <div id="mv-end-popup" class="hidden absolute inset-0 bg-slate-950/97 z-20 overflow-y-auto" style="position:absolute">
+        <div class="min-h-full flex items-center justify-center p-4">
+            <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-lg">
+                <p class="text-center text-xs text-slate-500 mb-1">FIM DE JOGO</p>
+                <p id="mv-end-rodada" class="text-center text-xs text-slate-600 mb-5"></p>
+                <div class="flex items-center justify-center gap-4 mb-2">
+                    <div class="text-center flex-1"><p id="mv-end-nome-casa" class="text-sm font-bold text-white"></p></div>
+                    <div class="text-center flex-shrink-0">
+                        <p id="mv-end-score" class="text-4xl font-black"></p>
+                    </div>
+                    <div class="text-center flex-1"><p id="mv-end-nome-fora" class="text-sm font-bold text-white"></p></div>
+                </div>
+                <div id="mv-end-eventos" class="mb-4 border-t border-slate-800 pt-4 space-y-0.5"></div>
+                <div id="mv-end-notas" class="mb-6 border-t border-slate-800 pt-4"></div>
+                <button onclick="fecharViewer()" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition">
+                    <i class="fas fa-home mr-2"></i>Voltar ao Início
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- ABA: ESTATÍSTICAS                                                         -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section id="tab-estatisticas" class="tab-content">
+    <?php
+    // Separa goleiros, defensores, meias e atacantes para ordenação por posição + OVR
+    $posOrdem = ['GOL'=>0,'ZAG'=>1,'LD'=>2,'LE'=>3,'VOL'=>4,'MC'=>5,'MEI'=>6,'PE'=>7,'PD'=>8,'ATA'=>9];
+    $elencoStats = $elenco;
+    usort($elencoStats, function($a, $b) use ($posOrdem) {
+        $pa = $posOrdem[$a['posicao']] ?? 99;
+        $pb = $posOrdem[$b['posicao']] ?? 99;
+        if ($pa !== $pb) return $pa - $pb;
+        return (int)$b['forca'] - (int)$a['forca'];
+    });
+    $totalPartidas = max(1, array_sum(array_column($elencoStats, 'gols')) > 0
+        ? (int)(($elencoStats[0]['partidas'] ?? 0) > 0 ? $elencoStats[0]['partidas'] : 0) : 0);
+    ?>
+    <!-- Cards resumo -->
+    <?php
+    $totGols    = array_sum(array_column($elencoStats, 'gols'));
+    $totAssists = array_sum(array_column($elencoStats, 'assists'));
+    $totAmar    = array_sum(array_column($elencoStats, 'amarelos'));
+    $totVerm    = array_sum(array_column($elencoStats, 'vermelhos'));
+    $jogadoresComPartida = array_filter($elencoStats, fn($j) => ($j['partidas'] ?? 0) > 0);
+    $melhorNotaRow  = !empty($jogadoresComPartida) ? array_reduce($jogadoresComPartida, fn($carry, $j) => (!$carry || ($j['nota_total'] / $j['partidas']) > ($carry['nota_total'] / $carry['partidas'])) ? $j : $carry) : null;
+    $artilheiro = !empty($elencoStats) ? array_reduce($elencoStats, fn($c, $j) => (!$c || (int)$j['gols'] > (int)$c['gols']) ? $j : $c) : null;
+    ?>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
+            <p class="text-xs text-slate-500 mb-1"><i class="fas fa-futbol text-green-400 mr-1"></i>Gols</p>
+            <p class="text-3xl font-black text-green-400"><?= $totGols ?></p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
+            <p class="text-xs text-slate-500 mb-1"><i class="fas fa-hands-helping text-blue-400 mr-1"></i>Assistências</p>
+            <p class="text-3xl font-black text-blue-400"><?= $totAssists ?></p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
+            <p class="text-xs text-slate-500 mb-1">Artilheiro</p>
+            <p class="text-sm font-bold text-white"><?= $artilheiro && $artilheiro['gols'] > 0 ? htmlspecialchars($artilheiro['nome']) : '—' ?></p>
+            <?php if ($artilheiro && $artilheiro['gols'] > 0): ?>
+            <p class="text-2xl font-black text-green-400"><?= $artilheiro['gols'] ?> <span class="text-sm font-normal text-slate-500">gols</span></p>
+            <?php endif; ?>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
+            <p class="text-xs text-slate-500 mb-1">Melhor Nota</p>
+            <?php if ($melhorNotaRow): ?>
+            <p class="text-sm font-bold text-white"><?= htmlspecialchars($melhorNotaRow['nome']) ?></p>
+            <p class="text-2xl font-black text-yellow-400"><?= number_format($melhorNotaRow['nota_total'] / $melhorNotaRow['partidas'], 1) ?></p>
+            <?php else: ?>
+            <p class="text-2xl font-black text-slate-600">—</p>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- Tabela principal -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+        <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+            <h3 class="text-sm font-bold text-white"><i class="fas fa-chart-bar text-blue-400 mr-2"></i>Estatísticas do Elenco</h3>
+            <span class="text-xs text-slate-500"><?= count($elencoStats) ?> jogadores</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+                <thead class="bg-slate-800 sticky top-0">
+                    <tr class="text-slate-400 text-center">
+                        <th class="py-2.5 px-3 text-left">Jogador</th>
+                        <th class="py-2.5 px-2">Pos</th>
+                        <th class="py-2.5 px-2">OVR</th>
+                        <th class="py-2.5 px-2" title="Partidas"><i class="fas fa-calendar-alt"></i></th>
+                        <th class="py-2.5 px-2" title="Gols"><i class="fas fa-futbol"></i></th>
+                        <th class="py-2.5 px-2" title="Assistências">🅰</th>
+                        <th class="py-2.5 px-2" title="Amarelos"><span style="display:inline-block;width:8px;height:11px;background:#facc15;border-radius:1px;vertical-align:middle"></span></th>
+                        <th class="py-2.5 px-2" title="Vermelhos"><span style="display:inline-block;width:8px;height:11px;background:#ef4444;border-radius:1px;vertical-align:middle"></span></th>
+                        <th class="py-2.5 px-3" title="Nota Média"><i class="fas fa-star text-yellow-400"></i></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60">
+                    <?php foreach ($elencoStats as $j):
+                        $partidas   = (int)($j['partidas']   ?? 0);
+                        $gols       = (int)($j['gols']       ?? 0);
+                        $assists    = (int)($j['assists']     ?? 0);
+                        $amarelos   = (int)($j['amarelos']    ?? 0);
+                        $vermelhos  = (int)($j['vermelhos']   ?? 0);
+                        $notaTotal  = (float)($j['nota_total'] ?? 0);
+                        $notaMedia  = $partidas > 0 ? $notaTotal / $partidas : null;
+                        $pCor       = posColor($j['posicao']);
+                        $notaCor    = $notaMedia === null ? '#475569' : ($notaMedia >= 7.5 ? '#4ade80' : ($notaMedia >= 6.5 ? '#facc15' : ($notaMedia >= 5.5 ? '#fb923c' : '#f87171')));
+                    ?>
+                    <tr class="hover:bg-slate-800/30 transition-colors">
+                        <td class="py-2.5 px-3">
+                            <div class="flex items-center gap-2">
+                                <span class="text-slate-300 font-medium"><?= htmlspecialchars($j['nome']) ?></span>
+                                <?php if ($j['titular'] ?? 0): ?><span class="text-[9px] text-green-500 font-bold">TIT</span><?php endif; ?>
+                                <?php if ($j['contundido'] ?? 0): ?><i class="fas fa-band-aid text-red-400 text-[9px]" title="Contundido"></i><?php endif; ?>
+                            </div>
+                        </td>
+                        <td class="py-2.5 px-2 text-center">
+                            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:<?= $pCor ?>22;color:<?= $pCor ?>"><?= $j['posicao'] ?></span>
+                        </td>
+                        <td class="py-2.5 px-2 text-center font-bold <?= (int)$j['forca'] >= 80 ? 'text-green-400' : ((int)$j['forca'] >= 70 ? 'text-yellow-400' : 'text-slate-300') ?>"><?= $j['forca'] ?></td>
+                        <td class="py-2.5 px-2 text-center text-slate-400"><?= $partidas ?: '—' ?></td>
+                        <td class="py-2.5 px-2 text-center font-bold <?= $gols > 0 ? 'text-green-400' : 'text-slate-600' ?>"><?= $gols ?: '—' ?></td>
+                        <td class="py-2.5 px-2 text-center font-bold <?= $assists > 0 ? 'text-blue-400' : 'text-slate-600' ?>"><?= $assists ?: '—' ?></td>
+                        <td class="py-2.5 px-2 text-center font-bold <?= $amarelos > 0 ? 'text-yellow-400' : 'text-slate-600' ?>"><?= $amarelos ?: '—' ?></td>
+                        <td class="py-2.5 px-2 text-center font-bold <?= $vermelhos > 0 ? 'text-red-400' : 'text-slate-600' ?>"><?= $vermelhos ?: '—' ?></td>
+                        <td class="py-2.5 px-3 text-center font-black text-sm" style="color:<?= $notaCor ?>"><?= $notaMedia !== null ? number_format($notaMedia, 1) : '—' ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <?php if (empty($jogadoresComPartida)): ?>
+    <div class="text-center py-10 text-slate-500">
+        <i class="fas fa-chart-bar text-4xl mb-3 block"></i>
+        <p class="font-medium">Nenhuma partida simulada ainda</p>
+        <p class="text-xs mt-1">As estatísticas aparecerão após a primeira rodada jogada</p>
+    </div>
+    <?php endif; ?>
+</section>
 
 <!-- ══════════════════════════════════════════════════════════════════════════ -->
 <!-- ABA: FINANÇAS                                                             -->
@@ -1084,9 +1255,14 @@ trocarAba('elenco');
     let mvMinuto = 0;
     let mvPaused = false;
     let mvSpeed = 1;
-    let mvDelay = 900; // ms per minute
+    let mvDelay = 900;
     let mvScore = {casa: 0, fora: 0};
-    let mvNotas = {};  // nome → {nota, gols, assists}
+    let mvNotas = {};  // nome → {nota, gols, assists, posicao, titular}
+    let mvSubCount = 0;
+    let mvTitulares = [];  // [{nome, posicao}] — jogadores em campo
+    let mvBanco = [];      // [{nome, posicao}] — jogadores no banco
+    let mvSubOut = null;   // índice selecionado para sair
+    let mvSubIn  = null;   // índice selecionado para entrar
     const SPEEDS = {1: 900, 2: 450, 4: 200};
 
     function mvData() { return window.MATCH_DATA || null; }
@@ -1154,6 +1330,10 @@ trocarAba('elenco');
         } else if (ev.tipo === 'falta') {
             icon = '<i class="fas fa-whistle" style="color:#94a3b8;font-size:10px"></i>';
             txt = `<span style="color:#94a3b8">Falta — ${ev.jogador}</span>`;
+        } else if (ev.tipo === 'sub') {
+            icon = '<i class="fas fa-exchange-alt" style="color:#a78bfa;font-size:10px"></i>';
+            txt = `<span style="color:#4ade80">${ev.jogador}</span> <span style="color:#64748b;font-size:9px">↑</span> <span style="color:#f87171">${ev.saiu}</span> <span style="color:#64748b;font-size:9px">↓</span>`;
+            rowColor = 'rgba(139,92,246,0.08)';
         } else {
             return;
         }
@@ -1165,31 +1345,27 @@ trocarAba('elenco');
     }
 
     function mvUpdateNotas(ev, meuTimeId) {
-        // Only update notas for own team events
         const isMeu = ev.time_id === meuTimeId;
         if (ev.tipo === 'gol') {
-            // Scorer (own team only for positive)
             if (isMeu && mvNotas[ev.jogador]) {
-                mvNotas[ev.jogador].nota = Math.min(10, mvNotas[ev.jogador].nota + 0.5);
+                mvNotas[ev.jogador].nota = Math.min(10, mvNotas[ev.jogador].nota + 1.33); // 3 gols = 10
                 mvNotas[ev.jogador].gols++;
             }
-            // Assist
             if (isMeu && ev.assistido && mvNotas[ev.assistido]) {
-                mvNotas[ev.assistido].nota = Math.min(10, mvNotas[ev.assistido].nota + 0.3);
+                mvNotas[ev.assistido].nota = Math.min(10, mvNotas[ev.assistido].nota + 1.0); // ~4 assist = 10
                 mvNotas[ev.assistido].assists++;
             }
-            // Goal conceded: all own-team players drop slightly
             if (!isMeu) {
                 Object.keys(mvNotas).forEach(n => {
-                    mvNotas[n].nota = Math.max(1, mvNotas[n].nota - 0.08);
+                    mvNotas[n].nota = Math.max(1, mvNotas[n].nota - 0.1);
                 });
             }
         } else if (ev.tipo === 'defesa' && isMeu) {
-            if (mvNotas[ev.jogador]) mvNotas[ev.jogador].nota = Math.min(10, mvNotas[ev.jogador].nota + 0.2);
+            if (mvNotas[ev.jogador]) mvNotas[ev.jogador].nota = Math.min(10, mvNotas[ev.jogador].nota + 0.4);
         } else if (ev.tipo === 'amarelo' && isMeu) {
-            if (mvNotas[ev.jogador]) mvNotas[ev.jogador].nota = Math.max(1, mvNotas[ev.jogador].nota - 0.2);
+            if (mvNotas[ev.jogador]) mvNotas[ev.jogador].nota = Math.max(1, mvNotas[ev.jogador].nota - 0.5);
         } else if (ev.tipo === 'vermelho' && isMeu) {
-            if (mvNotas[ev.jogador]) mvNotas[ev.jogador].nota = Math.max(1, mvNotas[ev.jogador].nota - 0.8);
+            if (mvNotas[ev.jogador]) mvNotas[ev.jogador].nota = Math.max(1, mvNotas[ev.jogador].nota - 1.5);
         }
     }
 
@@ -1231,6 +1407,65 @@ trocarAba('elenco');
         if (rel) rel.textContent = 'FIM';
         const btn = document.getElementById('mv-btn-play');
         if (btn) btn.disabled = true;
+        const subBtn = document.getElementById('mv-btn-subs');
+        if (subBtn) subBtn.disabled = true;
+        // Fecha painel de subs caso esteja aberto
+        document.getElementById('mv-sub-panel').classList.add('hidden');
+        // Mostra botão X e popup de fim
+        const closeBtn = document.getElementById('mv-close-btn');
+        if (closeBtn) closeBtn.style.display = '';
+        setTimeout(mvShowEndPopup, 800);
+    }
+
+    function mvShowEndPopup() {
+        const d = mvData();
+        if (!d) return;
+        document.getElementById('mv-end-rodada').textContent = 'Rodada ' + d.rodada;
+        document.getElementById('mv-end-nome-casa').textContent = d.nome_casa;
+        document.getElementById('mv-end-nome-fora').textContent = d.nome_fora;
+        const scoreEl = document.getElementById('mv-end-score');
+        scoreEl.textContent = mvScore.casa + ' – ' + mvScore.fora;
+        const isCasa = d.meu_time_id === d.time_casa_id;
+        const meuGols = isCasa ? mvScore.casa : mvScore.fora;
+        const advGols = isCasa ? mvScore.fora : mvScore.casa;
+        scoreEl.style.color = meuGols > advGols ? '#4ade80' : (meuGols < advGols ? '#f87171' : '#facc15');
+
+        // Eventos relevantes: gols, cartões
+        const evEl = document.getElementById('mv-end-eventos');
+        const mainEvs = d.eventos.filter(e => ['gol','amarelo','vermelho'].includes(e.tipo));
+        evEl.innerHTML = mainEvs.length === 0 ? '<p style="font-size:11px;color:#475569;text-align:center">Sem eventos registados</p>' :
+            mainEvs.map(ev => {
+                const isMeu = ev.time_id === d.meu_time_id;
+                const nomeTime = ev.time === 'casa' ? d.nome_casa : d.nome_fora;
+                if (ev.tipo === 'gol') {
+                    const cor = isMeu ? '#4ade80' : '#f87171';
+                    let txt = `<span style="color:${cor};font-weight:700">${ev.jogador}</span>`;
+                    if (ev.assistido) txt += ` <span style="color:#64748b;font-size:10px">(${ev.assistido})</span>`;
+                    txt += ` <span style="color:#475569;font-size:10px">${nomeTime}</span>`;
+                    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 4px;font-size:12px"><span style="color:#475569;font-size:10px;width:26px;text-align:right;flex-shrink:0">${ev.minuto}'</span><span>⚽</span>${txt}</div>`;
+                } else if (ev.tipo === 'amarelo') {
+                    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 4px;font-size:12px"><span style="color:#475569;font-size:10px;width:26px;text-align:right;flex-shrink:0">${ev.minuto}'</span><span style="display:inline-block;width:9px;height:12px;background:#facc15;border-radius:1px;flex-shrink:0"></span><span style="color:#fde68a">${ev.jogador}</span><span style="color:#475569;font-size:10px">${nomeTime}</span></div>`;
+                } else {
+                    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 4px;font-size:12px"><span style="color:#475569;font-size:10px;width:26px;text-align:right;flex-shrink:0">${ev.minuto}'</span><span style="display:inline-block;width:9px;height:12px;background:#ef4444;border-radius:1px;flex-shrink:0"></span><span style="color:#fca5a5">${ev.jogador}</span><span style="color:#475569;font-size:10px">${nomeTime}</span></div>`;
+                }
+            }).join('');
+
+        // Notas
+        const notasEl = document.getElementById('mv-end-notas');
+        const entries = Object.entries(mvNotas);
+        const tits = entries.filter(([,x]) => x.titular).sort((a,b) => (POS_ORDER[a[1].posicao]??99) - (POS_ORDER[b[1].posicao]??99));
+        const bnco = entries.filter(([,x]) => !x.titular);
+        function renderEndRow([nome, x]) {
+            const nc = notaCor(x.nota);
+            const pos = x.posicao ? `<span style="font-size:9px;color:#64748b;width:24px;flex-shrink:0;display:inline-block">${x.posicao}</span>` : '';
+            const badges = (x.gols > 0 ? `<span style="font-size:10px;margin-right:2px">⚽${x.gols}</span>` : '') + (x.assists > 0 ? `<span style="font-size:10px;color:#60a5fa">🅰${x.assists}</span>` : '');
+            return `<div style="display:flex;align-items:center;gap:4px;padding:3px 6px;border-radius:6px;background:rgba(30,41,59,0.5);margin-bottom:2px">${pos}<span style="font-size:11px;color:#94a3b8;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${nome}</span>${badges}<span style="font-size:13px;font-weight:900;color:${nc};flex-shrink:0;margin-left:4px">${x.nota.toFixed(1)}</span></div>`;
+        }
+        const hdr = (l) => `<div style="font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;padding:5px 6px 2px">${l}</div>`;
+        notasEl.innerHTML = (tits.length ? hdr('Titulares') + tits.map(renderEndRow).join('') : '') + (bnco.length ? hdr('Banco') + bnco.map(renderEndRow).join('') : '');
+
+        const popup = document.getElementById('mv-end-popup');
+        popup.classList.remove('hidden');
     }
 
     window.abrirViewer = function() {
@@ -1241,9 +1476,14 @@ trocarAba('elenco');
         mvMinuto = 0; mvPaused = false; mvScore = {casa: 0, fora: 0}; mvSpeed = 1; mvDelay = SPEEDS[1];
         clearTimeout(mvTimer);
 
-        // Init notas
+        // Init state
+        mvSubCount = 0; mvTitulares = []; mvBanco = []; mvSubOut = null; mvSubIn = null;
         mvNotas = {};
-        (d.elenco_notas || []).forEach(j => { mvNotas[j.nome] = {nota: 6.0, gols: 0, assists: 0, posicao: j.posicao || '', titular: !!j.titular}; });
+        (d.elenco_notas || []).forEach(j => {
+            mvNotas[j.nome] = {nota: 6.0, gols: 0, assists: 0, posicao: j.posicao || '', titular: !!j.titular};
+            if (j.titular) mvTitulares.push({nome: j.nome, posicao: j.posicao || ''});
+            else mvBanco.push({nome: j.nome, posicao: j.posicao || ''});
+        });
 
         // Set UI
         document.getElementById('mv-nome-casa').textContent = d.nome_casa;
@@ -1257,6 +1497,12 @@ trocarAba('elenco');
         document.getElementById('mv-btn-play').disabled = false;
         document.getElementById('mv-play-icon').className = 'fas fa-pause';
         document.getElementById('mv-play-label').textContent = 'Pausar';
+        document.getElementById('mv-btn-subs').disabled = false;
+        document.getElementById('mv-subs-label').textContent = 'Subs 0/5';
+        document.getElementById('mv-sub-panel').classList.add('hidden');
+        document.getElementById('mv-end-popup').classList.add('hidden');
+        const closeBtn2 = document.getElementById('mv-close-btn');
+        if (closeBtn2) closeBtn2.style.display = 'none';
 
         // Reset speed buttons
         document.querySelectorAll('.mv-speed-btn').forEach(b => {
@@ -1277,8 +1523,92 @@ trocarAba('elenco');
         mvTimer = setTimeout(mvTick, mvDelay);
     };
 
+    function mvRenderSubPanel() {
+        document.getElementById('mv-sub-count').textContent = mvSubCount;
+        const outEl = document.getElementById('mv-sub-list-out');
+        const inEl  = document.getElementById('mv-sub-list-in');
+        outEl.innerHTML = mvTitulares.map((j, i) => {
+            const sel = i === mvSubOut;
+            const bg  = sel ? 'rgba(239,68,68,0.15)' : 'rgba(30,41,59,0.5)';
+            const brd = sel ? '#f87171' : 'transparent';
+            const cor = sel ? '#fca5a5' : '#cbd5e1';
+            return `<div onclick="mvSelOut(${i})" style="cursor:pointer;padding:6px 10px;border-radius:8px;background:${bg};border:1px solid ${brd};display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <span style="font-size:9px;color:#64748b;width:22px;flex-shrink:0">${j.posicao}</span>
+                <span style="font-size:11px;color:${cor};overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${j.nome}</span>
+            </div>`;
+        }).join('');
+        inEl.innerHTML = mvBanco.map((j, i) => {
+            const sel = i === mvSubIn;
+            const bg  = sel ? 'rgba(34,197,94,0.15)' : 'rgba(30,41,59,0.5)';
+            const brd = sel ? '#4ade80' : 'transparent';
+            const cor = sel ? '#4ade80' : '#cbd5e1';
+            return `<div onclick="mvSelIn(${i})" style="cursor:pointer;padding:6px 10px;border-radius:8px;background:${bg};border:1px solid ${brd};display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <span style="font-size:9px;color:#64748b;width:22px;flex-shrink:0">${j.posicao}</span>
+                <span style="font-size:11px;color:${cor};overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${j.nome}</span>
+            </div>`;
+        }).join('');
+        document.getElementById('mv-sub-confirm').disabled = (mvSubOut === null || mvSubIn === null);
+    }
+
+    window.mvSelOut = function(i) { mvSubOut = i; mvRenderSubPanel(); };
+    window.mvSelIn  = function(i) { mvSubIn  = i; mvRenderSubPanel(); };
+
+    window.mvToggleSubs = function() {
+        const panel = document.getElementById('mv-sub-panel');
+        if (!panel.classList.contains('hidden')) {
+            panel.classList.add('hidden');
+            return;
+        }
+        if (!mvPaused) {
+            mvPaused = true;
+            document.getElementById('mv-play-icon').className = 'fas fa-play';
+            document.getElementById('mv-play-label').textContent = 'Continuar';
+            clearTimeout(mvTimer);
+        }
+        mvSubOut = null; mvSubIn = null;
+        mvRenderSubPanel();
+        panel.classList.remove('hidden');
+    };
+
+    window.mvConfirmSub = function() {
+        if (mvSubOut === null || mvSubIn === null || mvSubCount >= 5) return;
+        const d = mvData();
+        const saindo  = mvTitulares[mvSubOut];
+        const entrando = mvBanco[mvSubIn];
+        if (!saindo || !entrando) return;
+
+        // Transfere posição e atualiza notas
+        const notaOut = mvNotas[saindo.nome] ? mvNotas[saindo.nome].nota : 6.0;
+        entrando.posicao = saindo.posicao;
+        if (!mvNotas[entrando.nome]) mvNotas[entrando.nome] = {nota: 6.0, gols: 0, assists: 0, posicao: saindo.posicao, titular: true};
+        else { mvNotas[entrando.nome].titular = true; mvNotas[entrando.nome].posicao = saindo.posicao; }
+        if (mvNotas[saindo.nome]) mvNotas[saindo.nome].titular = false;
+
+        // Atualiza listas
+        mvTitulares.splice(mvSubOut, 1, entrando);
+        mvBanco.splice(mvSubIn, 1);
+        mvSubCount++;
+
+        document.getElementById('mv-subs-label').textContent = `Subs ${mvSubCount}/5`;
+        document.getElementById('mv-sub-count').textContent = mvSubCount;
+
+        // Adiciona evento de substituição no log
+        if (d) mvAddEvento({tipo:'sub', minuto:mvMinuto, time:'', time_id:0, jogador:entrando.nome, saiu:saindo.nome}, d.nome_casa, d.nome_fora, d.meu_time_id);
+        mvRenderNotas();
+
+        mvSubOut = null; mvSubIn = null;
+        if (mvSubCount >= 5) {
+            document.getElementById('mv-sub-panel').classList.add('hidden');
+            document.getElementById('mv-btn-subs').disabled = true;
+        } else {
+            mvRenderSubPanel();
+        }
+    };
+
     window.fecharViewer = function() {
         clearTimeout(mvTimer);
+        document.getElementById('mv-sub-panel').classList.add('hidden');
+        document.getElementById('mv-end-popup').classList.add('hidden');
         const v = document.getElementById('match-viewer');
         v.classList.add('hidden');
         v.classList.remove('flex');
