@@ -132,7 +132,6 @@ $posicoesCampo = [
             ['id'=>'dashboard',    'icon'=>'fa-house',         'label'=>'Início'],
             ['id'=>'elenco',       'icon'=>'fa-users',         'label'=>'Elenco'],
             ['id'=>'campeonato',   'icon'=>'fa-trophy',        'label'=>'Campeonato'],
-            ['id'=>'jogar',        'icon'=>'fa-play',          'label'=>'Jogar'],
             ['id'=>'estatisticas', 'icon'=>'fa-chart-bar',     'label'=>'Estatísticas'],
             ['id'=>'financas',     'icon'=>'fa-coins',         'label'=>'Finanças'],
             ['id'=>'mercado',      'icon'=>'fa-arrows-rotate', 'label'=>'Mercado'],
@@ -600,7 +599,7 @@ $posicoesCampo = [
     </div>
 
     <!-- Painel de substituições (overlay dentro do viewer) -->
-    <div id="mv-sub-panel" class="hidden absolute inset-0 bg-slate-950/96 z-10 flex flex-col p-4" style="position:absolute">
+    <div id="mv-sub-panel" class="hidden absolute inset-0 z-10 flex flex-col p-4" style="position:absolute;background:#020617">
         <div class="max-w-lg mx-auto w-full flex flex-col flex-1 min-h-0">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-white font-bold text-sm"><i class="fas fa-exchange-alt text-yellow-400 mr-2"></i>Substituição (<span id="mv-sub-count">0</span>/5 feitas)</h3>
@@ -936,7 +935,7 @@ function trocarAba(id) {
 }
 
 <?php if (isset($page_data['log_partida'])): ?>
-trocarAba('jogar');
+trocarAba('dashboard');
 setTimeout(() => { if (typeof abrirViewer === 'function') abrirViewer(); }, 200);
 <?php endif; ?>
 <?php if ($flashAba): ?>
@@ -1527,26 +1526,35 @@ trocarAba('elenco');
         document.getElementById('mv-sub-count').textContent = mvSubCount;
         const outEl = document.getElementById('mv-sub-list-out');
         const inEl  = document.getElementById('mv-sub-list-in');
-        outEl.innerHTML = mvTitulares.map((j, i) => {
-            const sel = i === mvSubOut;
-            const bg  = sel ? 'rgba(239,68,68,0.15)' : 'rgba(30,41,59,0.5)';
-            const brd = sel ? '#f87171' : 'transparent';
+
+        // Ordena por posição preservando índice original para seleção
+        const sortedOut = mvTitulares.map((j, i) => ({...j, _i: i}))
+            .sort((a, b) => (POS_ORDER[a.posicao] ?? 99) - (POS_ORDER[b.posicao] ?? 99));
+        const sortedIn = mvBanco.map((j, i) => ({...j, _i: i}))
+            .sort((a, b) => (POS_ORDER[a.posicao] ?? 99) - (POS_ORDER[b.posicao] ?? 99));
+
+        outEl.innerHTML = sortedOut.map(j => {
+            const sel = j._i === mvSubOut;
+            const bg  = sel ? 'rgba(239,68,68,0.15)' : 'rgba(15,23,42,0.8)';
+            const brd = sel ? '#f87171' : '#1e293b';
             const cor = sel ? '#fca5a5' : '#cbd5e1';
-            return `<div onclick="mvSelOut(${i})" style="cursor:pointer;padding:6px 10px;border-radius:8px;background:${bg};border:1px solid ${brd};display:flex;align-items:center;gap:6px;margin-bottom:4px">
-                <span style="font-size:9px;color:#64748b;width:22px;flex-shrink:0">${j.posicao}</span>
+            return `<div onclick="mvSelOut(${j._i})" style="cursor:pointer;padding:7px 10px;border-radius:8px;background:${bg};border:1px solid ${brd};display:flex;align-items:center;gap:6px;margin-bottom:3px">
+                <span style="font-size:9px;color:#64748b;width:24px;flex-shrink:0">${j.posicao}</span>
                 <span style="font-size:11px;color:${cor};overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${j.nome}</span>
             </div>`;
         }).join('');
-        inEl.innerHTML = mvBanco.map((j, i) => {
-            const sel = i === mvSubIn;
-            const bg  = sel ? 'rgba(34,197,94,0.15)' : 'rgba(30,41,59,0.5)';
-            const brd = sel ? '#4ade80' : 'transparent';
+
+        inEl.innerHTML = sortedIn.map(j => {
+            const sel = j._i === mvSubIn;
+            const bg  = sel ? 'rgba(34,197,94,0.15)' : 'rgba(15,23,42,0.8)';
+            const brd = sel ? '#4ade80' : '#1e293b';
             const cor = sel ? '#4ade80' : '#cbd5e1';
-            return `<div onclick="mvSelIn(${i})" style="cursor:pointer;padding:6px 10px;border-radius:8px;background:${bg};border:1px solid ${brd};display:flex;align-items:center;gap:6px;margin-bottom:4px">
-                <span style="font-size:9px;color:#64748b;width:22px;flex-shrink:0">${j.posicao}</span>
+            return `<div onclick="mvSelIn(${j._i})" style="cursor:pointer;padding:7px 10px;border-radius:8px;background:${bg};border:1px solid ${brd};display:flex;align-items:center;gap:6px;margin-bottom:3px">
+                <span style="font-size:9px;color:#64748b;width:24px;flex-shrink:0">${j.posicao}</span>
                 <span style="font-size:11px;color:${cor};overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${j.nome}</span>
             </div>`;
         }).join('');
+
         document.getElementById('mv-sub-confirm').disabled = (mvSubOut === null || mvSubIn === null);
     }
 
