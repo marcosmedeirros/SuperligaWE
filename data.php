@@ -145,10 +145,11 @@ if ($page === 'app' && $db_connected && isset($_SESSION['ecofut_save_id'])) {
     $mStmt->execute([$timeId, $save_id]);
     $page_data['mercado'] = $mStmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Log da última partida simulada (da sessão)
-    if (isset($_SESSION['ecofut_log_partida'])) {
-        $page_data['log_partida'] = $_SESSION['ecofut_log_partida'];
-        unset($_SESSION['ecofut_log_partida']);
+    // Match setup pendente (partida do usuário a ser simulada no cliente)
+    if (isset($_SESSION['ecofut_match_setup'])) {
+        $page_data['match_setup']    = $_SESSION['ecofut_match_setup'];
+        $page_data['match_auto_open'] = !empty($_SESSION['ecofut_match_auto_open']);
+        unset($_SESSION['ecofut_match_auto_open']);
     }
 
     endif; // if ($saveRow)

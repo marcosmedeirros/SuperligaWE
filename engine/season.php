@@ -128,108 +128,132 @@ function gerarFixtures(PDO $pdo, int $saveId, array $times, int $divisao): void 
  * @return array ['rodada'=>int, 'resultados'=>array, 'partida_usuario'=>array|null]
  */
 function avancarRodada(PDO $pdo, int $saveId): array {
-    // Busca dados do save
-    $save = $pdo->prepare("SELECT * FROM ecofut_saves WHERE id = ?");
-    $save->execute([$saveId]);
-    $saveData = $save->fetch(PDO::FETCH_ASSOC);
+    $saveQ = $pdo->prepare("SELECT * FROM ecofut_saves WHERE id = ?");
+    $saveQ->execute([$saveId]);
+    $saveData = $saveQ->fetch(PDO::FETCH_ASSOC);
     if (!$saveData) return [];
 
     $rodada        = (int)$saveData['rodada_atual'];
     $timeUsuarioId = (int)$saveData['time_id'];
+    $dadosJson     = json_decode($saveData['dados_json'] ?? '{}', true) ?: [];
+    $taticaUser    = $dadosJson['tatica'] ?? 'normal';
 
-    // Partidas desta rodada ainda agendadas
-    $stmt = $pdo->prepare(
-        "SELECT * FROM ecofut_partidas
-         WHERE save_id = ? AND rodada = ? AND status = 'agendada'"
-    );
+    $stmt = $pdo->prepare("SELECT * FROM ecofut_partidas WHERE save_id = ? AND rodada = ? AND status = 'agendada'");
     $stmt->execute([$saveId, $rodada]);
     $partidas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     if (empty($partidas)) {
-        return ['rodada' => $rodada, 'resultados' => [], 'partida_usuario' => null];
+        return ['rodada' => $rodada, 'resultados' => [], 'match_setup' => null, 'time_usuario_id' => $timeUsuarioId];
     }
 
-    $resultados     = [];
-    $partidaUsuario = null;
+    $resultados = [];
+    $matchSetup = null;
 
     foreach ($partidas as $p) {
         $ehUsuario = ((int)$p['time_casa_id'] === $timeUsuarioId || (int)$p['time_fora_id'] === $timeUsuarioId);
-
-        // Obtém força dos times para simulação
         $dadosCasa = obterDadosTimeParaSimulacao($pdo, $saveId, (int)$p['time_casa_id'], $timeUsuarioId);
         $dadosFora = obterDadosTimeParaSimulacao($pdo, $saveId, (int)$p['time_fora_id'], $timeUsuarioId);
 
-        $res = simularPartida($dadosCasa, $dadosFora);
-
-        // Salva resultado
-        $pdo->prepare(
-            "UPDATE ecofut_partidas
-             SET gols_casa = ?, gols_fora = ?, status = 'jogada', log_json = ?
-             WHERE id = ?"
-        )->execute([
-            $res['gols_casa'], $res['gols_fora'],
-            json_encode($res['log']),
-            $p['id'],
-        ]);
-
-        // Atualiza classificação
-        atualizarClassificacao($pdo, $saveId, (int)$p['time_casa_id'], (int)$p['time_fora_id'], $res['gols_casa'], $res['gols_fora']);
-
-        $resultado = [
-            'partida_id'    => $p['id'],
-            'time_casa_id'  => (int)$p['time_casa_id'],
-            'time_fora_id'  => (int)$p['time_fora_id'],
-            'gols_casa'     => $res['gols_casa'],
-            'gols_fora'     => $res['gols_fora'],
-            'log'           => $res['log'],
-        ];
-        $resultados[] = $resultado;
-
         if ($ehUsuario) {
-            $partidaUsuario = $resultado;
-            // Desgaste apenas no elenco do usuário
-            aplicarDesgastePosJogo($pdo, $saveId, array_merge($resultado, [
-                'time_casa_id' => (int)$p['time_casa_id'],
-                'time_fora_id' => (int)$p['time_fora_id'],
-            ]), $timeUsuarioId);
+            // Partida do usuário: não simula aqui, monta setup para o viewer JS
+            $ehCasa  = (int)$p['time_casa_id'] === $timeUsuarioId;
+            $jogMeu  = $ehCasa ? $dadosCasa['jogadores'] : $dadosFora['jogadores'];
+            $jogAdv  = $ehCasa ? $dadosFora['jogadores'] : $dadosCasa['jogadores'];
+            $mapJog  = fn($arr) => array_values(array_map(fn($j) => [
+                'id'            => isset($j['id']) ? (int)$j['id'] : 0,
+                'nome'          => $j['nome'],
+                'posicao'       => $j['posicao'],
+                'titular'       => (int)($j['titular'] ?? 0),
+                'sk_finalizacao'=> (int)($j['sk_finalizacao'] ?? 50),
+                'sk_armacao'    => (int)($j['sk_armacao'] ?? 50),
+                'contundido'    => (int)($j['contundido'] ?? 0),
+                'suspenso'      => (int)($j['suspenso'] ?? 0),
+            ], $arr));
+            $matchSetup = [
+                'partida_id'    => (int)$p['id'],
+                'rodada'        => $rodada,
+                'nome_casa'     => $dadosCasa['nome'],
+                'nome_fora'     => $dadosFora['nome'],
+                'time_casa_id'  => (int)$p['time_casa_id'],
+                'time_fora_id'  => (int)$p['time_fora_id'],
+                'meu_time_id'   => $timeUsuarioId,
+                'eh_casa'       => $ehCasa,
+                'forca_meu'     => round(calcularForcaElenco($jogMeu, 65), 2),
+                'forca_adv'     => round(calcularForcaElenco($jogAdv, 65), 2),
+                'tatica_inicial'=> $taticaUser,
+                'formacao_inicial' => $dadosJson['formacao'] ?? '4-3-3',
+                'jogadores_meu' => $mapJog($jogMeu),
+                'jogadores_adv' => $mapJog($jogAdv),
+            ];
+            continue;
         }
+
+        $res = simularPartida($dadosCasa, $dadosFora);
+        $pdo->prepare("UPDATE ecofut_partidas SET gols_casa=?,gols_fora=?,status='jogada',log_json=? WHERE id=?")
+            ->execute([$res['gols_casa'], $res['gols_fora'], json_encode($res['log']), $p['id']]);
+        atualizarClassificacao($pdo, $saveId, (int)$p['time_casa_id'], (int)$p['time_fora_id'], $res['gols_casa'], $res['gols_fora']);
+        $resultados[] = ['partida_id'=>(int)$p['id'],'time_casa_id'=>(int)$p['time_casa_id'],'time_fora_id'=>(int)$p['time_fora_id'],'gols_casa'=>$res['gols_casa'],'gols_fora'=>$res['gols_fora']];
     }
 
-    // Recuperação de reservas/lesionados do elenco do usuário
-    recuperarEnergiaBancoLesionados($pdo, $saveId);
-
-    // Pagamento salarial a cada 4 rodadas (≈ 1 mês)
-    if ($rodada % 4 === 0) {
-        processarSalarios($pdo, $saveId);
-    }
-
-    // Receita de bilheteria (partidas em casa do usuário)
-    foreach ($resultados as $r) {
-        if ((int)$r['time_casa_id'] === $timeUsuarioId) {
-            $bilheteria = rand(80000, 350000);
-            $pdo->prepare(
-                "INSERT INTO ecofut_financas (save_id, categoria, descricao, valor)
-                 VALUES (?, 'bilheteria', 'Bilheteria rodada $rodada', ?)"
-            )->execute([$saveId, $bilheteria]);
-            $pdo->prepare("UPDATE ecofut_saves SET saldo = saldo + ? WHERE id = ?")->execute([$bilheteria, $saveId]);
+    // Se o usuário não tem partida nesta rodada, processa encerramento agora
+    if ($matchSetup === null) {
+        recuperarEnergiaBancoLesionados($pdo, $saveId);
+        if ($rodada % 4 === 0) processarSalarios($pdo, $saveId);
+        foreach ($resultados as $r) {
+            if ((int)$r['time_casa_id'] === $timeUsuarioId) {
+                $b = rand(80000, 350000);
+                $pdo->prepare("INSERT INTO ecofut_financas(save_id,categoria,descricao,valor) VALUES(?,'bilheteria','Bilheteria rodada $rodada',?)")->execute([$saveId, $b]);
+                $pdo->prepare("UPDATE ecofut_saves SET saldo=saldo+? WHERE id=?")->execute([$b, $saveId]);
+            }
         }
-    }
-
-    // Avança rodada
-    $proximaRodada = $rodada + 1;
-    $pdo->prepare("UPDATE ecofut_saves SET rodada_atual = ? WHERE id = ?")->execute([$proximaRodada, $saveId]);
-
-    // Verifica fim de temporada (após rodada 38)
-    if ($rodada >= 38) {
-        processarFimTemporada($pdo, $saveId);
+        $pdo->prepare("UPDATE ecofut_saves SET rodada_atual=? WHERE id=?")->execute([$rodada + 1, $saveId]);
+        if ($rodada >= 38) processarFimTemporada($pdo, $saveId);
     }
 
     return [
-        'rodada'          => $rodada,
-        'resultados'      => $resultados,
-        'partida_usuario' => $partidaUsuario,
-        'time_usuario_id' => $timeUsuarioId,
+        'rodada'         => $rodada,
+        'resultados'     => $resultados,
+        'match_setup'    => $matchSetup,
+        'time_usuario_id'=> $timeUsuarioId,
     ];
+}
+
+/**
+ * Finaliza a partida do usuário após a simulação no cliente.
+ * Salva resultado, atualiza classificação, aplica desgaste, avança rodada.
+ */
+function finalizarPartidaUsuario(PDO $pdo, int $saveId, int $partidaId, int $golsCasa, int $golsFora): array {
+    $saveQ = $pdo->prepare("SELECT * FROM ecofut_saves WHERE id=?");
+    $saveQ->execute([$saveId]);
+    $saveData = $saveQ->fetch(PDO::FETCH_ASSOC);
+    if (!$saveData) return ['ok' => false];
+
+    $rodada        = (int)$saveData['rodada_atual'];
+    $timeUsuarioId = (int)$saveData['time_id'];
+
+    $pQ = $pdo->prepare("SELECT * FROM ecofut_partidas WHERE id=? AND save_id=?");
+    $pQ->execute([$partidaId, $saveId]);
+    $partida = $pQ->fetch(PDO::FETCH_ASSOC);
+    if (!$partida || $partida['status'] === 'jogada') return ['ok' => false];
+
+    $pdo->prepare("UPDATE ecofut_partidas SET gols_casa=?,gols_fora=?,status='jogada' WHERE id=? AND save_id=?")
+        ->execute([$golsCasa, $golsFora, $partidaId, $saveId]);
+    atualizarClassificacao($pdo, $saveId, (int)$partida['time_casa_id'], (int)$partida['time_fora_id'], $golsCasa, $golsFora);
+    aplicarDesgastePosJogo($pdo, $saveId, [
+        'gols_casa' => $golsCasa, 'gols_fora' => $golsFora,
+        'time_casa_id' => (int)$partida['time_casa_id'], 'time_fora_id' => (int)$partida['time_fora_id'],
+    ], $timeUsuarioId);
+    recuperarEnergiaBancoLesionados($pdo, $saveId);
+    if ($rodada % 4 === 0) processarSalarios($pdo, $saveId);
+    if ((int)$partida['time_casa_id'] === $timeUsuarioId) {
+        $b = rand(80000, 350000);
+        $pdo->prepare("INSERT INTO ecofut_financas(save_id,categoria,descricao,valor) VALUES(?,'bilheteria','Bilheteria rodada $rodada',?)")->execute([$saveId, $b]);
+        $pdo->prepare("UPDATE ecofut_saves SET saldo=saldo+? WHERE id=?")->execute([$b, $saveId]);
+    }
+    $pdo->prepare("UPDATE ecofut_saves SET rodada_atual=? WHERE id=?")->execute([$rodada + 1, $saveId]);
+    if ($rodada >= 38) processarFimTemporada($pdo, $saveId);
+
+    return ['ok' => true, 'rodada' => $rodada, 'time_usuario_id' => $timeUsuarioId];
 }
 
 // ── Helpers internos ──────────────────────────────────────────────────────────

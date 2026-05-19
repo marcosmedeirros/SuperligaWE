@@ -21,6 +21,10 @@ $timeId     = $save['time_id']        ?? 0;
 $dadosJsonParsed = json_decode($save['dados_json'] ?? '{}', true) ?: [];
 $formacaoAtual   = $dadosJsonParsed['formacao'] ?? '4-3-3';
 $bancoSalvosIds  = $dadosJsonParsed['banco_ids'] ?? [];
+$taticaAtual     = $dadosJsonParsed['tatica']    ?? 'normal';
+
+// Match setup (partida pendente de simulação do cliente)
+$matchSetup = $page_data['match_setup'] ?? null;
 
 // Flash aba after save escalação
 $flashAba = $_SESSION['ecofut_flash_aba'] ?? null;
@@ -197,12 +201,39 @@ $posicoesCampo = [
         </div>
     </div>
 
+    <!-- Partida pendente (match_setup na sessão) -->
+    <?php if ($matchSetup): ?>
+    <div class="bg-slate-900 border border-yellow-500/40 rounded-2xl p-5 mb-4">
+        <p class="text-xs font-bold text-yellow-400 mb-3"><i class="fas fa-circle-exclamation mr-1.5"></i>Partida pendente — Rodada <?= (int)$matchSetup['rodada'] ?></p>
+        <div class="flex items-center justify-between gap-3 mb-4">
+            <div class="text-center flex-1">
+                <p class="font-bold text-white text-sm"><?= htmlspecialchars($matchSetup['nome_casa']) ?></p>
+                <?php if ((int)$matchSetup['meu_time_id'] === (int)$matchSetup['time_casa_id']): ?>
+                <span class="text-[10px] text-green-400 font-semibold">VOCÊ</span>
+                <?php endif; ?>
+            </div>
+            <div class="text-slate-600 font-bold">VS</div>
+            <div class="text-center flex-1">
+                <p class="font-bold text-white text-sm"><?= htmlspecialchars($matchSetup['nome_fora']) ?></p>
+                <?php if ((int)$matchSetup['meu_time_id'] === (int)$matchSetup['time_fora_id']): ?>
+                <span class="text-[10px] text-green-400 font-semibold">VOCÊ</span>
+                <?php endif; ?>
+            </div>
+        </div>
+        <button onclick="abrirViewer()" class="w-full bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2.5 rounded-xl text-sm transition">
+            <i class="fas fa-play-circle mr-1.5"></i> Ver Partida
+        </button>
+    </div>
+    <?php endif; ?>
+
     <!-- Próxima partida + Últimas partidas -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <!-- Próxima partida -->
         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
             <h3 class="text-sm font-bold text-white mb-4"><i class="fas fa-calendar-alt text-green-400 mr-2"></i>Próxima Partida</h3>
-            <?php if ($proxima): ?>
+            <?php if ($matchSetup): ?>
+            <p class="text-slate-500 text-sm text-center py-4">Jogue a partida pendente antes de avançar.</p>
+            <?php elseif ($proxima): ?>
             <div class="flex items-center justify-between gap-3">
                 <div class="text-center flex-1">
                     <p class="text-xs text-slate-500 mb-1">Rodada <?= $proxima['rodada'] ?></p>
@@ -279,17 +310,22 @@ $posicoesCampo = [
     </div>
     <?php endif; ?>
 
-    <!-- Barra: formação + contadores + salvar -->
+    <!-- Barra: formação + tática + contadores + salvar -->
     <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4">
-        <div class="flex flex-wrap items-center gap-2">
-            <span class="text-xs text-slate-500 font-semibold">Tática:</span>
+        <div class="flex flex-wrap items-center gap-2 mb-3">
+            <span class="text-xs text-slate-500 font-semibold">Formação:</span>
             <div id="formacao-pills" class="flex flex-wrap gap-1.5"></div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs text-slate-500 font-semibold">Estilo:</span>
+            <div id="tatica-pills" class="flex gap-1.5"></div>
             <div class="ml-auto flex items-center gap-3 flex-wrap">
                 <span class="text-xs text-slate-500"><span id="cnt-tit" class="text-white font-bold">0</span><span class="text-slate-600">/11 tit</span></span>
                 <span class="text-xs text-slate-500"><span id="cnt-banco" class="text-white font-bold">0</span><span class="text-slate-600">/6 banco</span></span>
                 <form method="POST" action="?page=app" id="form-escalacao" class="inline">
                     <input type="hidden" name="action" value="salvar_escalacao">
                     <input type="hidden" name="formacao" id="input-formacao" value="">
+                    <input type="hidden" name="tatica" id="input-tatica" value="<?= htmlspecialchars($taticaAtual) ?>">
                     <input type="hidden" name="titular_ids" id="input-tit-ids" value="">
                     <input type="hidden" name="banco_ids" id="input-banco-ids" value="">
                     <button type="submit" class="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition flex items-center gap-1.5">
@@ -443,85 +479,7 @@ $posicoesCampo = [
     </div>
 </section>
 
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<!-- ABA: JOGAR                                                                -->
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<section id="tab-jogar" class="tab-content">
-    <div class="max-w-2xl mx-auto">
-
-        <?php if (isset($page_data['log_partida'])): $logP = $page_data['log_partida']; ?>
-        <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 mb-5">
-            <p class="text-xs text-slate-500 text-center mb-4">Rodada <?= $logP['rodada'] ?></p>
-            <div class="flex items-center justify-center gap-6 mb-5">
-                <div class="text-center flex-1">
-                    <p class="text-sm font-bold <?= (int)($logP['time_casa_id'] ?? 0) === $timeId ? 'text-green-400' : 'text-slate-300' ?>"><?= htmlspecialchars($logP['nome_casa']) ?></p>
-                    <p class="text-xs text-slate-600 mt-1">Casa</p>
-                </div>
-                <div class="text-2xl text-slate-600 font-bold">vs</div>
-                <div class="text-center flex-1">
-                    <p class="text-sm font-bold <?= (int)($logP['time_fora_id'] ?? 0) === $timeId ? 'text-green-400' : 'text-slate-300' ?>"><?= htmlspecialchars($logP['nome_fora']) ?></p>
-                    <p class="text-xs text-slate-600 mt-1">Fora</p>
-                </div>
-            </div>
-            <button onclick="abrirViewer()" class="w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 rounded-xl transition text-sm flex items-center justify-center gap-2">
-                <i class="fas fa-play-circle text-base"></i> Ver Partida
-            </button>
-        </div>
-
-        <script>
-        window.MATCH_DATA = <?= json_encode([
-            'rodada'       => $logP['rodada'],
-            'gols_casa'    => $logP['gols_casa'],
-            'gols_fora'    => $logP['gols_fora'],
-            'nome_casa'    => $logP['nome_casa'],
-            'nome_fora'    => $logP['nome_fora'],
-            'time_casa_id' => (int)($logP['time_casa_id'] ?? 0),
-            'time_fora_id' => (int)($logP['time_fora_id'] ?? 0),
-            'meu_time_id'  => $timeId,
-            'eventos'      => array_values(array_filter($logP['eventos'] ?? [], fn($e) => in_array($e['tipo'], ['gol','amarelo','vermelho','falta','defesa']))),
-            'elenco_notas' => $logP['elenco_notas'] ?? [],
-        ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
-        </script>
-        <?php else: ?>
-        <script>window.MATCH_DATA = null;</script>
-        <?php endif; ?>
-
-        <!-- Próxima partida -->
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-            <h3 class="text-lg font-bold text-white mb-2">Próxima Rodada</h3>
-            <?php if ($proxima): ?>
-            <div class="bg-slate-800 rounded-xl p-4 mb-5 text-center">
-                <p class="text-xs text-slate-500 mb-2">Rodada <?= $proxima['rodada'] ?></p>
-                <div class="flex items-center justify-center gap-4">
-                    <span class="font-bold text-white"><?= htmlspecialchars($proxima['nome_casa']) ?></span>
-                    <span class="text-slate-600 font-bold">vs</span>
-                    <span class="font-bold text-white"><?= htmlspecialchars($proxima['nome_fora']) ?></span>
-                </div>
-                <?php if ((int)$proxima['time_casa_id'] === $timeId): ?>
-                <p class="text-xs text-green-400 mt-1">Você joga em casa</p>
-                <?php elseif ((int)$proxima['time_fora_id'] === $timeId): ?>
-                <p class="text-xs text-yellow-400 mt-1">Você joga fora</p>
-                <?php endif; ?>
-            </div>
-            <form method="POST" action="?page=app">
-                <input type="hidden" name="action" value="avancar_rodada">
-                <button class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-green-500/20 text-base">
-                    <i class="fas fa-play mr-2"></i> Simular Rodada <?= $rodada ?>
-                </button>
-            </form>
-            <p class="text-xs text-slate-500 text-center mt-3">Todos os jogos da rodada serão simulados automaticamente</p>
-            <?php elseif ($rodada > 38): ?>
-            <div class="text-center py-8">
-                <i class="fas fa-trophy text-yellow-400 text-4xl mb-3"></i>
-                <p class="text-white font-bold text-lg">Temporada Encerrada!</p>
-                <p class="text-slate-400 text-sm mt-1">Veja sua classificação final na aba Campeonato.</p>
-            </div>
-            <?php else: ?>
-            <p class="text-slate-500 text-center py-4">Nenhuma partida agendada para esta rodada.</p>
-            <?php endif; ?>
-        </div>
-    </div>
-</section>
+<?php /* tab-jogar removida — funcionalidade integrada ao dashboard */ ?>
 
 <!-- ══════════════════════════════════════════════════════════════════════════ -->
 <!-- MODAL: MATCH VIEWER                                                        -->
@@ -576,24 +534,35 @@ $posicoesCampo = [
 
     <!-- Controles -->
     <div class="flex-shrink-0 bg-slate-900 border-t border-slate-800 px-4 py-3">
-        <div class="max-w-4xl mx-auto flex items-center gap-3 flex-wrap">
-            <button id="mv-btn-play" onclick="mvTogglePlay()" class="bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition flex items-center gap-1.5">
-                <i id="mv-play-icon" class="fas fa-pause"></i> <span id="mv-play-label">Pausar</span>
-            </button>
-            <button id="mv-btn-subs" onclick="mvToggleSubs()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition flex items-center gap-1.5">
-                <i class="fas fa-exchange-alt"></i> <span id="mv-subs-label">Subs 0/5</span>
-            </button>
-            <div class="flex items-center gap-2">
-                <span class="text-xs text-slate-500">Velocidade:</span>
-                <?php foreach ([1=>0.9,2=>0.45,4=>0.2] as $spd=>$delay): ?>
-                <button onclick="mvSetSpeed(<?= $spd ?>)" data-speed="<?= $spd ?>" class="mv-speed-btn text-xs px-2.5 py-1 rounded-lg transition <?= $spd===1?'bg-slate-600 text-white':'bg-slate-800 text-slate-400 hover:bg-slate-700' ?>"><?= $spd ?>×</button>
-                <?php endforeach; ?>
-                <button onclick="mvInstant()" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700 transition">Fim</button>
-            </div>
-            <div class="ml-auto">
-                <div id="mv-progress-bar" class="w-32 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                    <div id="mv-progress-fill" class="h-full bg-green-500 rounded-full transition-all" style="width:0%"></div>
+        <div class="max-w-4xl mx-auto flex flex-col gap-2">
+            <!-- Linha 1: Play / Subs / Velocidade / Progresso -->
+            <div class="flex items-center gap-2 flex-wrap">
+                <button id="mv-btn-play" onclick="mvTogglePlay()" class="bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition flex items-center gap-1.5">
+                    <i id="mv-play-icon" class="fas fa-pause"></i> <span id="mv-play-label">Pausar</span>
+                </button>
+                <button id="mv-btn-subs" onclick="mvToggleSubs()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition flex items-center gap-1.5">
+                    <i class="fas fa-exchange-alt"></i> <span id="mv-subs-label">Subs 0/5</span>
+                </button>
+                <div class="flex items-center gap-1.5">
+                    <span class="text-xs text-slate-500">Vel:</span>
+                    <?php foreach ([1,2,4] as $spd): ?>
+                    <button onclick="mvSetSpeed(<?= $spd ?>)" data-speed="<?= $spd ?>" class="mv-speed-btn text-xs px-2 py-1 rounded-lg transition <?= $spd===1?'bg-slate-600 text-white':'bg-slate-800 text-slate-400 hover:bg-slate-700' ?>"><?= $spd ?>×</button>
+                    <?php endforeach; ?>
+                    <button onclick="mvInstant()" class="text-xs px-2 py-1 rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700 transition">Fim</button>
                 </div>
+                <div class="ml-auto">
+                    <div class="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="mv-progress-fill" class="h-full bg-green-500 rounded-full transition-all" style="width:0%"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Linha 2: Tática -->
+            <div class="flex items-center gap-2">
+                <span class="text-xs text-slate-500">Tática:</span>
+                <button id="mv-tat-btn-defensivo" onclick="mvSetTatica('defensivo')" style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#94a3b8;cursor:pointer;transition:all .2s">Defensivo</button>
+                <button id="mv-tat-btn-normal"    onclick="mvSetTatica('normal')"    style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#94a3b8;cursor:pointer;transition:all .2s">Normal</button>
+                <button id="mv-tat-btn-ataque"    onclick="mvSetTatica('ataque')"    style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#94a3b8;cursor:pointer;transition:all .2s">Ataque</button>
+                <span class="text-[10px] text-slate-600 ml-1">(<span id="mv-tat-label">—</span>)</span>
             </div>
         </div>
     </div>
@@ -635,9 +604,20 @@ $posicoesCampo = [
                     </div>
                     <div class="text-center flex-1"><p id="mv-end-nome-fora" class="text-sm font-bold text-white"></p></div>
                 </div>
-                <div id="mv-end-eventos" class="mb-4 border-t border-slate-800 pt-4 space-y-0.5"></div>
+                <div class="mb-4 border-t border-slate-800 pt-4">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                        <div>
+                            <p id="mv-end-nome-casa-col" class="text-[10px] font-bold text-slate-500 uppercase mb-1 truncate"></p>
+                            <div id="mv-end-eventos-casa"></div>
+                        </div>
+                        <div>
+                            <p id="mv-end-nome-fora-col" class="text-[10px] font-bold text-slate-500 uppercase mb-1 truncate text-right"></p>
+                            <div id="mv-end-eventos-fora"></div>
+                        </div>
+                    </div>
+                </div>
                 <div id="mv-end-notas" class="mb-6 border-t border-slate-800 pt-4"></div>
-                <button onclick="fecharViewer()" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition">
+                <button onclick="mvSubmitResult()" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition">
                     <i class="fas fa-home mr-2"></i>Voltar ao Início
                 </button>
             </div>
@@ -919,6 +899,17 @@ $posicoesCampo = [
 </main>
 </div>
 
+<!-- Formulário oculto para salvar resultado da partida -->
+<form id="form-resultado-partida" method="POST" action="?page=app" style="display:none">
+    <input type="hidden" name="action" value="salvar_partida_usuario">
+    <input type="hidden" name="partida_id"    id="res-partida-id"    value="">
+    <input type="hidden" name="gols_casa"     id="res-gols-casa"     value="">
+    <input type="hidden" name="gols_fora"     id="res-gols-fora"     value="">
+    <input type="hidden" name="stats_json"    id="res-stats-json"    value="">
+    <input type="hidden" name="nova_formacao" id="res-nova-formacao" value="">
+    <input type="hidden" name="nova_tatica"   id="res-nova-tatica"   value="">
+</form>
+
 <script>
 function trocarAba(id) {
     document.querySelectorAll('.tab-content').forEach(s => s.classList.remove('active'));
@@ -934,7 +925,9 @@ function trocarAba(id) {
     }
 }
 
-<?php if (isset($page_data['log_partida'])): ?>
+window.MATCH_SETUP = <?= $matchSetup ? json_encode($matchSetup, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP) : 'null' ?>;
+
+<?php if (!empty($page_data['match_auto_open'])): ?>
 trocarAba('dashboard');
 setTimeout(() => { if (typeof abrirViewer === 'function') abrirViewer(); }, 200);
 <?php endif; ?>
@@ -950,6 +943,7 @@ trocarAba('elenco');
     const ELENCO = <?= json_encode($elencoEscalacao, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
     const FORMACAO_INICIAL = <?= json_encode($formacaoAtual) ?>;
     const BANCO_IDS_SALVOS = <?= json_encode($bancoSalvosIds) ?>;
+    const TATICA_INICIAL   = <?= json_encode($taticaAtual) ?>;
 
     const POS_COLORS = {GOL:'#f59e0b',ZAG:'#3b82f6',LD:'#06b6d4',LE:'#06b6d4',VOL:'#8b5cf6',MC:'#8b5cf6',MEI:'#ec4899',PE:'#22c55e',PD:'#22c55e',ATA:'#ef4444'};
     const POS_LABELS = {GOL:'GK',ZAG:'CB',LD:'RB',LE:'LB',VOL:'CDM',MC:'CM',MEI:'CAM',PE:'LW',PD:'RW',ATA:'ST'};
@@ -1020,6 +1014,7 @@ trocarAba('elenco');
 
     // State
     let formacao = FORMACAO_INICIAL in FORMACOES ? FORMACAO_INICIAL : '4-3-3';
+    let tatica   = ['normal','ataque','defensivo'].includes(TATICA_INICIAL) ? TATICA_INICIAL : 'normal';
     let slots = [];   // [{pos,x,y,jogadorId|null}, ...]
     let banco = [];   // [jogadorId, ...]
     let selecionado = null;
@@ -1052,6 +1047,25 @@ trocarAba('elenco');
             `<button type="button" onclick="EF.setFormacao('${f}')"
                 class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${f===formacao?'bg-green-600 text-white shadow shadow-green-500/30':'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'}">${f}</button>`
         ).join('');
+    }
+
+    const TATICAS = {
+        defensivo: {label:'Defensivo', hint:'Menos gols, mais defesa'},
+        normal:    {label:'Normal',    hint:'Equilibrado'},
+        ataque:    {label:'Ataque',    hint:'Mais gols, mais exposição'},
+    };
+    function renderTaticaPills() {
+        const c = document.getElementById('tatica-pills');
+        if (!c) return;
+        c.innerHTML = Object.entries(TATICAS).map(([k, v]) => {
+            const active = k === tatica;
+            const col = k === 'ataque' ? '#ef4444' : (k === 'defensivo' ? '#3b82f6' : '#22c55e');
+            const bg  = active ? col + '22' : '#1e293b';
+            const brd = active ? col : '#334155';
+            const tc  = active ? col : '#64748b';
+            return `<button type="button" onclick="EF.setTatica('${k}')" title="${v.hint}"
+                style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;border:1px solid ${brd};background:${bg};color:${tc};cursor:pointer;transition:all .2s">${v.label}</button>`;
+        }).join('');
     }
 
     function renderCampo() {
@@ -1134,14 +1148,16 @@ trocarAba('elenco');
 
     function updateInputs() {
         const fi = document.getElementById('input-formacao');
+        const ta = document.getElementById('input-tatica');
         const ti = document.getElementById('input-tit-ids');
         const bi = document.getElementById('input-banco-ids');
         if (fi) fi.value = formacao;
+        if (ta) ta.value = tatica;
         if (ti) ti.value = titIds().join(',');
         if (bi) bi.value = banco.join(',');
     }
 
-    function render() { renderPills(); renderCampo(); renderListas(); updateInputs(); }
+    function render() { renderPills(); renderTaticaPills(); renderCampo(); renderListas(); updateInputs(); }
 
     // ── Actions ──────────────────────────────────────────────────────────────
     window.EF = {
@@ -1239,6 +1255,7 @@ trocarAba('elenco');
 
         tirarBanco(id) { banco = banco.filter(b => b !== id); render(); },
         addBanco(id) { if (banco.length < 6 && !banco.includes(id)) { banco.push(id); render(); } },
+        setTatica(t) { if (TATICAS[t]) { tatica = t; render(); } },
     };
 
     initState();
@@ -1256,15 +1273,27 @@ trocarAba('elenco');
     let mvSpeed = 1;
     let mvDelay = 900;
     let mvScore = {casa: 0, fora: 0};
-    let mvNotas = {};  // nome → {nota, gols, assists, posicao, titular}
+    let mvNotas = {};     // nome → {nota, gols, assists, amarelos, vermelhos, posicao, titular, id}
     let mvSubCount = 0;
-    let mvTitulares = [];  // [{nome, posicao}] — jogadores em campo
-    let mvBanco = [];      // [{nome, posicao}] — jogadores no banco
-    let mvSubOut = null;   // índice selecionado para sair
-    let mvSubIn  = null;   // índice selecionado para entrar
-    const SPEEDS = {1: 900, 2: 450, 4: 200};
+    let mvTitulares = []; // [{nome, posicao, id}]
+    let mvBanco = [];     // [{nome, posicao, id}]
+    let mvSubOut = null;
+    let mvSubIn  = null;
+    let mvTaticaAtual = 'normal';
+    let mvFormacaoAtual = '4-3-3';
+    let mvJogAdv = [];    // [{nome, posicao}] titulares do adversário
+    let mvEvtLog = [];    // todos os eventos gerados (para o popup final)
 
-    function mvData() { return window.MATCH_DATA || null; }
+    const SPEEDS = {1: 900, 2: 450, 4: 200};
+    const POS_ORDER = {GOL:0,ZAG:1,LD:2,LE:3,VOL:4,MC:5,MEI:6,PE:7,PD:8,ATA:9};
+    const TAT_MOD = {
+        normal:    {atk:1.00, def:1.00},
+        ataque:    {atk:1.30, def:0.80},
+        defensivo: {atk:0.75, def:1.25},
+    };
+    const SCORER_W = {GOL:0,ZAG:1,LD:1,LE:1,VOL:3,MC:5,MEI:8,PE:10,PD:10,ATA:15};
+
+    function mvData() { return window.MATCH_SETUP || null; }
 
     function notaCor(n) {
         if (n >= 8.0) return '#4ade80';
@@ -1273,8 +1302,6 @@ trocarAba('elenco');
         if (n >= 5.5) return '#fb923c';
         return '#f87171';
     }
-
-    const POS_ORDER = {GOL:0,ZAG:1,LD:2,LE:3,VOL:4,MC:5,MEI:6,PE:7,PD:8,ATA:9};
 
     function mvRenderNotas() {
         const el = document.getElementById('mv-notas');
@@ -1331,7 +1358,9 @@ trocarAba('elenco');
             txt = `<span style="color:#94a3b8">Falta — ${ev.jogador}</span>`;
         } else if (ev.tipo === 'sub') {
             icon = '<i class="fas fa-exchange-alt" style="color:#a78bfa;font-size:10px"></i>';
-            txt = `<span style="color:#4ade80">${ev.jogador}</span> <span style="color:#64748b;font-size:9px">↑</span> <span style="color:#f87171">${ev.saiu}</span> <span style="color:#64748b;font-size:9px">↓</span>`;
+            txt = ev.saiu
+                ? `<span style="color:#4ade80">${ev.jogador}</span> <span style="color:#64748b;font-size:9px">↑</span> <span style="color:#f87171">${ev.saiu}</span> <span style="color:#64748b;font-size:9px">↓</span>`
+                : `<span style="color:#a78bfa">${ev.jogador}</span>`;
             rowColor = 'rgba(139,92,246,0.08)';
         } else {
             return;
@@ -1362,129 +1391,212 @@ trocarAba('elenco');
         } else if (ev.tipo === 'defesa' && isMeu) {
             if (mvNotas[ev.jogador]) mvNotas[ev.jogador].nota = Math.min(10, mvNotas[ev.jogador].nota + 0.4);
         } else if (ev.tipo === 'amarelo' && isMeu) {
-            if (mvNotas[ev.jogador]) mvNotas[ev.jogador].nota = Math.max(1, mvNotas[ev.jogador].nota - 0.5);
+            if (mvNotas[ev.jogador]) {
+                mvNotas[ev.jogador].nota = Math.max(1, mvNotas[ev.jogador].nota - 0.5);
+                mvNotas[ev.jogador].amarelos = (mvNotas[ev.jogador].amarelos || 0) + 1;
+            }
         } else if (ev.tipo === 'vermelho' && isMeu) {
-            if (mvNotas[ev.jogador]) mvNotas[ev.jogador].nota = Math.max(1, mvNotas[ev.jogador].nota - 1.5);
+            if (mvNotas[ev.jogador]) {
+                mvNotas[ev.jogador].nota = Math.max(1, mvNotas[ev.jogador].nota - 1.5);
+                mvNotas[ev.jogador].vermelhos = (mvNotas[ev.jogador].vermelhos || 0) + 1;
+            }
         }
     }
 
+    function pickByWeight(arr, wFn) {
+        const total = arr.reduce((s,x) => s + wFn(x), 0);
+        if (!total) return arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
+        let r = Math.random() * total;
+        for (const x of arr) { r -= wFn(x); if (r <= 0) return x; }
+        return arr[arr.length - 1];
+    }
+    function pickScorer(pl) { return pl.length ? pickByWeight(pl, p => SCORER_W[p.posicao] || 5) : null; }
+    function pickAssister(pl, exc) {
+        const c = pl.filter(p => p !== exc && p.posicao !== 'GOL');
+        return c.length ? c[Math.floor(Math.random() * c.length)] : null;
+    }
+    function calcLambdaPerMin(d) {
+        const tat = TAT_MOD[mvTaticaAtual] || TAT_MOD.normal;
+        const ratio    = d.forca_meu / (d.forca_adv || 65);
+        const ratioAdv = d.forca_adv / (d.forca_meu || 65);
+        const hb  = d.eh_casa ? 1.1 : 1.0;
+        const hbA = d.eh_casa ? 1.0 : 1.1;
+        const lM = Math.min(5, Math.max(0.3, 1.5 * Math.sqrt(ratio)    * tat.atk * hb));
+        const lA = Math.min(5, Math.max(0.3, 1.5 * Math.sqrt(ratioAdv) / tat.def * hbA));
+        return {meu: lM / 90, adv: lA / 90};
+    }
+    function simMinuto(min) {
+        const d = mvData(); if (!d) return [];
+        const lam = calcLambdaPerMin(d);
+        const evs = [];
+        const meuSide = d.eh_casa ? 'casa' : 'fora';
+        const advSide = d.eh_casa ? 'fora' : 'casa';
+        const advId   = d.eh_casa ? d.time_fora_id : d.time_casa_id;
+        if (Math.random() < lam.meu) {
+            const sc = pickScorer(mvTitulares);
+            if (sc) {
+                const as = Math.random() < 0.45 ? pickAssister(mvTitulares, sc) : null;
+                evs.push({tipo:'gol', minuto:min, time:meuSide, time_id:d.meu_time_id, jogador:sc.nome, assistido:as?.nome||null});
+            }
+        }
+        if (Math.random() < lam.adv) {
+            const sc = mvJogAdv.length ? mvJogAdv[Math.floor(Math.random()*mvJogAdv.length)] : {nome:'Adversário'};
+            evs.push({tipo:'gol', minuto:min, time:advSide, time_id:advId, jogador:sc.nome, assistido:null});
+        }
+        if (Math.random() < 0.011) {
+            const isMeu = Math.random() < 0.5;
+            if (isMeu && mvTitulares.length) {
+                const j = mvTitulares[Math.floor(Math.random()*mvTitulares.length)];
+                evs.push({tipo:'amarelo', minuto:min, time:meuSide, time_id:d.meu_time_id, jogador:j.nome});
+            } else if (!isMeu && mvJogAdv.length) {
+                const j = mvJogAdv[Math.floor(Math.random()*mvJogAdv.length)];
+                evs.push({tipo:'amarelo', minuto:min, time:advSide, time_id:advId, jogador:j.nome});
+            }
+        }
+        return evs;
+    }
+    function mvProcessEvento(ev) {
+        const d = mvData(); if (!d) return;
+        if (ev.tipo === 'gol') {
+            if (ev.time === 'casa') mvScore.casa++; else mvScore.fora++;
+            document.getElementById('mv-gols-casa').textContent = mvScore.casa;
+            document.getElementById('mv-gols-fora').textContent = mvScore.fora;
+        }
+        if (['gol','amarelo','vermelho'].includes(ev.tipo)) mvEvtLog.push(ev);
+        mvUpdateNotas(ev, d.meu_time_id);
+        mvAddEvento(ev, d.nome_casa, d.nome_fora, d.meu_time_id);
+        mvRenderNotas();
+    }
     function mvTick() {
         const d = mvData();
-        if (!d || mvPaused || mvMinuto > 90) return;
-
-        // Advance clock
+        if (!d || mvPaused || mvMinuto >= 90) return;
         mvMinuto++;
-        document.getElementById('mv-relogio').textContent = mvMinuto + (mvMinuto >= 90 ? '+' : '') + "'";
-        document.getElementById('mv-progress-fill').style.width = Math.min(100, (mvMinuto / 90) * 100) + '%';
-
-        // Check for events at this minute
-        d.eventos.filter(e => e.minuto === mvMinuto).forEach(ev => {
-            if (ev.tipo === 'gol') {
-                if (ev.time === 'casa') mvScore.casa++;
-                else mvScore.fora++;
-                document.getElementById('mv-gols-casa').textContent = mvScore.casa;
-                document.getElementById('mv-gols-fora').textContent = mvScore.fora;
-            }
-            mvUpdateNotas(ev, d.meu_time_id);
-            mvAddEvento(ev, d.nome_casa, d.nome_fora, d.meu_time_id);
-            mvRenderNotas();
-        });
-
-        if (mvMinuto >= 90) {
-            mvEnd();
-        } else {
-            mvTimer = setTimeout(mvTick, mvDelay);
-        }
+        document.getElementById('mv-relogio').textContent = mvMinuto + "'";
+        document.getElementById('mv-progress-fill').style.width = Math.min(100, (mvMinuto/90)*100) + '%';
+        simMinuto(mvMinuto).forEach(ev => mvProcessEvento(ev));
+        if (mvMinuto >= 90) mvEnd();
+        else mvTimer = setTimeout(mvTick, mvDelay);
     }
 
     function mvEnd() {
-        clearTimeout(mvTimer);
-        mvTimer = null;
+        clearTimeout(mvTimer); mvTimer = null;
         const dot = document.getElementById('mv-status-dot');
         if (dot) { dot.style.background = '#64748b'; dot.style.animation = 'none'; }
-        const rel = document.getElementById('mv-relogio');
-        if (rel) rel.textContent = 'FIM';
-        const btn = document.getElementById('mv-btn-play');
-        if (btn) btn.disabled = true;
-        const subBtn = document.getElementById('mv-btn-subs');
-        if (subBtn) subBtn.disabled = true;
-        // Fecha painel de subs caso esteja aberto
+        const rel = document.getElementById('mv-relogio'); if (rel) rel.textContent = 'FIM';
+        const btn = document.getElementById('mv-btn-play'); if (btn) btn.disabled = true;
+        const subBtn = document.getElementById('mv-btn-subs'); if (subBtn) subBtn.disabled = true;
+        ['defensivo','normal','ataque'].forEach(t => {
+            const b = document.getElementById('mv-tat-btn-'+t); if (b) b.disabled = true;
+        });
         document.getElementById('mv-sub-panel').classList.add('hidden');
-        // Mostra botão X e popup de fim
-        const closeBtn = document.getElementById('mv-close-btn');
-        if (closeBtn) closeBtn.style.display = '';
+        const closeBtn = document.getElementById('mv-close-btn'); if (closeBtn) closeBtn.style.display = '';
         setTimeout(mvShowEndPopup, 800);
     }
 
     function mvShowEndPopup() {
-        const d = mvData();
-        if (!d) return;
+        const d = mvData(); if (!d) return;
         document.getElementById('mv-end-rodada').textContent = 'Rodada ' + d.rodada;
         document.getElementById('mv-end-nome-casa').textContent = d.nome_casa;
         document.getElementById('mv-end-nome-fora').textContent = d.nome_fora;
+        const nc = document.getElementById('mv-end-nome-casa-col'); if (nc) nc.textContent = d.nome_casa;
+        const nf = document.getElementById('mv-end-nome-fora-col'); if (nf) nf.textContent = d.nome_fora;
         const scoreEl = document.getElementById('mv-end-score');
         scoreEl.textContent = mvScore.casa + ' – ' + mvScore.fora;
         const isCasa = d.meu_time_id === d.time_casa_id;
-        const meuGols = isCasa ? mvScore.casa : mvScore.fora;
-        const advGols = isCasa ? mvScore.fora : mvScore.casa;
-        scoreEl.style.color = meuGols > advGols ? '#4ade80' : (meuGols < advGols ? '#f87171' : '#facc15');
+        const meuG = isCasa ? mvScore.casa : mvScore.fora;
+        const advG = isCasa ? mvScore.fora : mvScore.casa;
+        scoreEl.style.color = meuG > advG ? '#4ade80' : (meuG < advG ? '#f87171' : '#facc15');
 
-        // Eventos relevantes: gols, cartões
-        const evEl = document.getElementById('mv-end-eventos');
-        const mainEvs = d.eventos.filter(e => ['gol','amarelo','vermelho'].includes(e.tipo));
-        evEl.innerHTML = mainEvs.length === 0 ? '<p style="font-size:11px;color:#475569;text-align:center">Sem eventos registados</p>' :
-            mainEvs.map(ev => {
-                const isMeu = ev.time_id === d.meu_time_id;
-                const nomeTime = ev.time === 'casa' ? d.nome_casa : d.nome_fora;
-                if (ev.tipo === 'gol') {
-                    const cor = isMeu ? '#4ade80' : '#f87171';
-                    let txt = `<span style="color:${cor};font-weight:700">${ev.jogador}</span>`;
-                    if (ev.assistido) txt += ` <span style="color:#64748b;font-size:10px">(${ev.assistido})</span>`;
-                    txt += ` <span style="color:#475569;font-size:10px">${nomeTime}</span>`;
-                    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 4px;font-size:12px"><span style="color:#475569;font-size:10px;width:26px;text-align:right;flex-shrink:0">${ev.minuto}'</span><span>⚽</span>${txt}</div>`;
-                } else if (ev.tipo === 'amarelo') {
-                    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 4px;font-size:12px"><span style="color:#475569;font-size:10px;width:26px;text-align:right;flex-shrink:0">${ev.minuto}'</span><span style="display:inline-block;width:9px;height:12px;background:#facc15;border-radius:1px;flex-shrink:0"></span><span style="color:#fde68a">${ev.jogador}</span><span style="color:#475569;font-size:10px">${nomeTime}</span></div>`;
-                } else {
-                    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 4px;font-size:12px"><span style="color:#475569;font-size:10px;width:26px;text-align:right;flex-shrink:0">${ev.minuto}'</span><span style="display:inline-block;width:9px;height:12px;background:#ef4444;border-radius:1px;flex-shrink:0"></span><span style="color:#fca5a5">${ev.jogador}</span><span style="color:#475569;font-size:10px">${nomeTime}</span></div>`;
-                }
-            }).join('');
+        function renderEvt(ev) {
+            const isMeu = ev.time_id === d.meu_time_id;
+            if (ev.tipo === 'gol') {
+                const cor = isMeu ? '#4ade80' : '#f87171';
+                let txt = `<span style="color:${cor};font-weight:700">${ev.jogador}</span>`;
+                if (ev.assistido) txt += ` <span style="color:#64748b;font-size:9px">(${ev.assistido})</span>`;
+                return `<div style="display:flex;align-items:center;gap:4px;padding:2px 0;font-size:11px"><span style="color:#475569;font-size:9px;width:22px;flex-shrink:0">${ev.minuto}'</span>⚽${txt}</div>`;
+            } else if (ev.tipo === 'amarelo') {
+                return `<div style="display:flex;align-items:center;gap:4px;padding:2px 0;font-size:11px"><span style="color:#475569;font-size:9px;width:22px;flex-shrink:0">${ev.minuto}'</span><span style="display:inline-block;width:8px;height:11px;background:#facc15;border-radius:1px"></span><span style="color:#fde68a">${ev.jogador}</span></div>`;
+            } else if (ev.tipo === 'vermelho') {
+                return `<div style="display:flex;align-items:center;gap:4px;padding:2px 0;font-size:11px"><span style="color:#475569;font-size:9px;width:22px;flex-shrink:0">${ev.minuto}'</span><span style="display:inline-block;width:8px;height:11px;background:#ef4444;border-radius:1px"></span><span style="color:#fca5a5">${ev.jogador}</span></div>`;
+            }
+            return '';
+        }
+        const casaEvs = mvEvtLog.filter(e => e.time === 'casa');
+        const foraEvs = mvEvtLog.filter(e => e.time === 'fora');
+        const casaEl  = document.getElementById('mv-end-eventos-casa');
+        const foraEl  = document.getElementById('mv-end-eventos-fora');
+        if (casaEl) casaEl.innerHTML = casaEvs.length ? casaEvs.map(renderEvt).join('') : '<p style="font-size:10px;color:#475569;text-align:center;padding:4px">—</p>';
+        if (foraEl) foraEl.innerHTML = foraEvs.length ? foraEvs.map(renderEvt).join('') : '<p style="font-size:10px;color:#475569;text-align:center;padding:4px">—</p>';
 
         // Notas
         const notasEl = document.getElementById('mv-end-notas');
         const entries = Object.entries(mvNotas);
-        const tits = entries.filter(([,x]) => x.titular).sort((a,b) => (POS_ORDER[a[1].posicao]??99) - (POS_ORDER[b[1].posicao]??99));
+        const tits = entries.filter(([,x]) => x.titular).sort((a,b) => (POS_ORDER[a[1].posicao]??99)-(POS_ORDER[b[1].posicao]??99));
         const bnco = entries.filter(([,x]) => !x.titular);
         function renderEndRow([nome, x]) {
-            const nc = notaCor(x.nota);
-            const pos = x.posicao ? `<span style="font-size:9px;color:#64748b;width:24px;flex-shrink:0;display:inline-block">${x.posicao}</span>` : '';
-            const badges = (x.gols > 0 ? `<span style="font-size:10px;margin-right:2px">⚽${x.gols}</span>` : '') + (x.assists > 0 ? `<span style="font-size:10px;color:#60a5fa">🅰${x.assists}</span>` : '');
-            return `<div style="display:flex;align-items:center;gap:4px;padding:3px 6px;border-radius:6px;background:rgba(30,41,59,0.5);margin-bottom:2px">${pos}<span style="font-size:11px;color:#94a3b8;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${nome}</span>${badges}<span style="font-size:13px;font-weight:900;color:${nc};flex-shrink:0;margin-left:4px">${x.nota.toFixed(1)}</span></div>`;
+            const nc2 = notaCor(x.nota);
+            const pos2 = x.posicao ? `<span style="font-size:9px;color:#64748b;width:24px;flex-shrink:0;display:inline-block">${x.posicao}</span>` : '';
+            const badges2 = (x.gols>0?`<span style="font-size:10px;margin-right:2px">⚽${x.gols}</span>`:'')+(x.assists>0?`<span style="font-size:10px;color:#60a5fa">🅰${x.assists}</span>`:'');
+            return `<div style="display:flex;align-items:center;gap:4px;padding:3px 6px;border-radius:6px;background:rgba(30,41,59,0.5);margin-bottom:2px">${pos2}<span style="font-size:11px;color:#94a3b8;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${nome}</span>${badges2}<span style="font-size:13px;font-weight:900;color:${nc2};flex-shrink:0;margin-left:4px">${x.nota.toFixed(1)}</span></div>`;
         }
-        const hdr = (l) => `<div style="font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;padding:5px 6px 2px">${l}</div>`;
-        notasEl.innerHTML = (tits.length ? hdr('Titulares') + tits.map(renderEndRow).join('') : '') + (bnco.length ? hdr('Banco') + bnco.map(renderEndRow).join('') : '');
+        const hdr = l => `<div style="font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;padding:5px 6px 2px">${l}</div>`;
+        notasEl.innerHTML = (tits.length ? hdr('Titulares')+tits.map(renderEndRow).join('') : '') + (bnco.length ? hdr('Banco')+bnco.map(renderEndRow).join('') : '');
 
-        const popup = document.getElementById('mv-end-popup');
-        popup.classList.remove('hidden');
+        // Preenche form de resultado
+        const statsArr = Object.entries(mvNotas).filter(([,x]) => x.id > 0)
+            .map(([,x]) => ({id:x.id, gols:x.gols||0, assists:x.assists||0, amarelos:x.amarelos||0, vermelhos:x.vermelhos||0, nota:+x.nota.toFixed(2)}));
+        document.getElementById('res-partida-id').value    = d.partida_id;
+        document.getElementById('res-gols-casa').value     = mvScore.casa;
+        document.getElementById('res-gols-fora').value     = mvScore.fora;
+        document.getElementById('res-stats-json').value    = JSON.stringify(statsArr);
+        document.getElementById('res-nova-formacao').value = mvFormacaoAtual;
+        document.getElementById('res-nova-tatica').value   = mvTaticaAtual;
+
+        document.getElementById('mv-end-popup').classList.remove('hidden');
     }
 
-    window.abrirViewer = function() {
-        const d = mvData();
-        if (!d) return;
+    function mvUpdateTaticaBtns() {
+        const labels = {defensivo:'Def',normal:'Normal',ataque:'Atk'};
+        ['defensivo','normal','ataque'].forEach(t => {
+            const btn = document.getElementById('mv-tat-btn-'+t); if (!btn) return;
+            const active = t === mvTaticaAtual;
+            const col = t==='ataque'?'#dc2626':(t==='defensivo'?'#2563eb':'#16a34a');
+            btn.style.background  = active ? col : '#1e293b';
+            btn.style.color       = active ? '#fff' : '#94a3b8';
+            btn.style.borderColor = active ? col : '#334155';
+        });
+        const lbl = document.getElementById('mv-tat-label');
+        if (lbl) lbl.textContent = {defensivo:'Defensivo',normal:'Normal',ataque:'Ataque'}[mvTaticaAtual] || '';
+    }
 
-        // Reset state
-        mvMinuto = 0; mvPaused = false; mvScore = {casa: 0, fora: 0}; mvSpeed = 1; mvDelay = SPEEDS[1];
+    window.mvSetTatica = function(t) {
+        if (!TAT_MOD[t]) return;
+        mvTaticaAtual = t;
+        mvUpdateTaticaBtns();
+        const d = mvData(); if (!d) return;
+        const labels = {defensivo:'Tática: Defensivo',normal:'Tática: Normal',ataque:'Tática: Ataque'};
+        mvAddEvento({tipo:'sub',minuto:mvMinuto,time:'',time_id:0,jogador:labels[t],saiu:''}, d.nome_casa, d.nome_fora, d.meu_time_id);
+    };
+
+    window.abrirViewer = function() {
+        const d = mvData(); if (!d) return;
+
+        mvMinuto = 0; mvPaused = false; mvScore = {casa:0,fora:0}; mvSpeed = 1; mvDelay = SPEEDS[1];
+        mvEvtLog = [];
         clearTimeout(mvTimer);
 
-        // Init state
+        mvTaticaAtual = d.tatica_inicial || 'normal';
+        mvFormacaoAtual = d.formacao_inicial || '4-3-3';
         mvSubCount = 0; mvTitulares = []; mvBanco = []; mvSubOut = null; mvSubIn = null;
-        mvNotas = {};
-        (d.elenco_notas || []).forEach(j => {
-            mvNotas[j.nome] = {nota: 6.0, gols: 0, assists: 0, posicao: j.posicao || '', titular: !!j.titular};
-            if (j.titular) mvTitulares.push({nome: j.nome, posicao: j.posicao || ''});
-            else mvBanco.push({nome: j.nome, posicao: j.posicao || ''});
-        });
+        mvNotas = {}; mvJogAdv = [];
 
-        // Set UI
+        (d.jogadores_meu || []).forEach(j => {
+            mvNotas[j.nome] = {nota:6.0,gols:0,assists:0,amarelos:0,vermelhos:0,posicao:j.posicao||'',titular:!!j.titular,id:j.id||0};
+            if (j.titular) mvTitulares.push({nome:j.nome,posicao:j.posicao||'',id:j.id||0});
+            else           mvBanco.push({nome:j.nome,posicao:j.posicao||'',id:j.id||0});
+        });
+        mvJogAdv = (d.jogadores_adv || []).filter(j => j.titular).map(j => ({nome:j.nome,posicao:j.posicao}));
+
         document.getElementById('mv-nome-casa').textContent = d.nome_casa;
         document.getElementById('mv-nome-fora').textContent = d.nome_fora;
         document.getElementById('mv-gols-casa').textContent = '0';
@@ -1500,25 +1612,22 @@ trocarAba('elenco');
         document.getElementById('mv-subs-label').textContent = 'Subs 0/5';
         document.getElementById('mv-sub-panel').classList.add('hidden');
         document.getElementById('mv-end-popup').classList.add('hidden');
-        const closeBtn2 = document.getElementById('mv-close-btn');
-        if (closeBtn2) closeBtn2.style.display = 'none';
+        const closeBtn2 = document.getElementById('mv-close-btn'); if (closeBtn2) closeBtn2.style.display = 'none';
 
-        // Reset speed buttons
+        ['defensivo','normal','ataque'].forEach(t => {
+            const b = document.getElementById('mv-tat-btn-'+t); if (b) b.disabled = false;
+        });
+        mvUpdateTaticaBtns();
+
         document.querySelectorAll('.mv-speed-btn').forEach(b => {
-            b.classList.toggle('bg-slate-600', b.dataset.speed == '1');
-            b.classList.toggle('text-white', b.dataset.speed == '1');
-            b.classList.toggle('bg-slate-800', b.dataset.speed != '1');
-            b.classList.toggle('text-slate-400', b.dataset.speed != '1');
+            const a = b.dataset.speed == '1';
+            b.classList.toggle('bg-slate-600', a); b.classList.toggle('text-white', a);
+            b.classList.toggle('bg-slate-800', !a); b.classList.toggle('text-slate-400', !a);
         });
 
         mvRenderNotas();
-
-        // Show modal
         const v = document.getElementById('match-viewer');
-        v.classList.remove('hidden');
-        v.classList.add('flex');
-
-        // Start simulation
+        v.classList.remove('hidden'); v.classList.add('flex');
         mvTimer = setTimeout(mvTick, mvDelay);
     };
 
@@ -1585,10 +1694,8 @@ trocarAba('elenco');
         const entrando = mvBanco[mvSubIn];
         if (!saindo || !entrando) return;
 
-        // Transfere posição e atualiza notas
-        const notaOut = mvNotas[saindo.nome] ? mvNotas[saindo.nome].nota : 6.0;
         entrando.posicao = saindo.posicao;
-        if (!mvNotas[entrando.nome]) mvNotas[entrando.nome] = {nota: 6.0, gols: 0, assists: 0, posicao: saindo.posicao, titular: true};
+        if (!mvNotas[entrando.nome]) mvNotas[entrando.nome] = {nota:6.0,gols:0,assists:0,amarelos:0,vermelhos:0,posicao:saindo.posicao,titular:true,id:entrando.id||0};
         else { mvNotas[entrando.nome].titular = true; mvNotas[entrando.nome].posicao = saindo.posicao; }
         if (mvNotas[saindo.nome]) mvNotas[saindo.nome].titular = false;
 
@@ -1641,28 +1748,21 @@ trocarAba('elenco');
     };
 
     window.mvInstant = function() {
-        const d = mvData();
-        if (!d) return;
         clearTimeout(mvTimer);
-        // Apply all remaining events instantly
         for (let m = mvMinuto + 1; m <= 90; m++) {
-            d.eventos.filter(e => e.minuto === m).forEach(ev => {
-                if (ev.tipo === 'gol') {
-                    if (ev.time === 'casa') mvScore.casa++;
-                    else mvScore.fora++;
-                }
-                mvUpdateNotas(ev, d.meu_time_id);
-                mvAddEvento(ev, d.nome_casa, d.nome_fora, d.meu_time_id);
-            });
+            simMinuto(m).forEach(ev => mvProcessEvento(ev));
         }
         mvMinuto = 90;
-        document.getElementById('mv-gols-casa').textContent = mvScore.casa;
-        document.getElementById('mv-gols-fora').textContent = mvScore.fora;
+        document.getElementById('mv-relogio').textContent = "90'";
+        document.getElementById('mv-progress-fill').style.width = '100%';
         mvRenderNotas();
         mvEnd();
     };
 
-    // Keyboard ESC closes viewer
+    window.mvSubmitResult = function() {
+        document.getElementById('form-resultado-partida').submit();
+    };
+
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.getElementById('match-viewer').classList.contains('hidden')) fecharViewer(); });
 })();
 </script>

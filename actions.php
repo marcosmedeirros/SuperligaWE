@@ -174,99 +174,71 @@ if ($action === 'avancar_rodada') {
     require_once __DIR__ . '/engine/season.php';
     $resultado = avancarRodada($pdo, $save_id);
 
-    // Guarda resultado da partida do usuário para exibir na view
-    if (!empty($resultado['partida_usuario'])) {
-        $pu = $resultado['partida_usuario'];
+    if (!empty($resultado['match_setup'])) {
+        $_SESSION['ecofut_match_setup']     = $resultado['match_setup'];
+        $_SESSION['ecofut_match_auto_open'] = true;
+    } else {
+        unset($_SESSION['ecofut_match_setup'], $_SESSION['ecofut_match_auto_open']);
+    }
 
-        // Busca nomes dos times
-        $stmtN = $pdo->prepare("SELECT id, nome FROM ecofut_times WHERE id IN (?,?)");
-        $stmtN->execute([$pu['time_casa_id'], $pu['time_fora_id']]);
-        $nomes = [];
-        foreach ($stmtN->fetchAll() as $r) $nomes[$r['id']] = $r['nome'];
+    header("Location: ?page=app");
+    exit;
+}
 
-        // Busca elenco do usuário para notas dos jogadores
-        $saveId = (int)$_SESSION['ecofut_save_id'];
-        $stmtElenco = $pdo->prepare("SELECT id, nome, posicao, titular FROM ecofut_elenco WHERE save_id = ? ORDER BY titular DESC, forca DESC");
-        $stmtElenco->execute([$saveId]);
-        $elencoNotasRaw = $stmtElenco->fetchAll();
-        $elencoNotas = array_map(fn($j) => [
-            'id'      => (int)$j['id'],
-            'nome'    => $j['nome'],
-            'posicao' => $j['posicao'],
-            'titular' => (int)$j['titular'],
-            'nota'    => 6.0,
-            'gols'    => 0,
-            'assists' => 0,
-        ], $elencoNotasRaw);
+// ── SALVAR PARTIDA DO USUÁRIO ─────────────────────────────────────────────────
+if ($action === 'salvar_partida_usuario') {
+    if (!$db_connected || !isset($_SESSION['ecofut_save_id'])) {
+        header("Location: ?page=app"); exit;
+    }
 
-        $_SESSION['ecofut_log_partida'] = [
-            'rodada'       => $resultado['rodada'],
-            'gols_casa'    => $pu['gols_casa'],
-            'gols_fora'    => $pu['gols_fora'],
-            'nome_casa'    => $nomes[$pu['time_casa_id']] ?? 'Casa',
-            'nome_fora'    => $nomes[$pu['time_fora_id']] ?? 'Fora',
-            'time_casa_id' => $pu['time_casa_id'],
-            'time_fora_id' => $pu['time_fora_id'],
-            'time_usuario' => $_SESSION['ecofut_save_id'] ? 'casa_ou_fora' : 'casa',
-            'eventos'      => $pu['log'],
-            'elenco_notas' => $elencoNotas,
-        ];
+    $save_id       = (int)$_SESSION['ecofut_save_id'];
+    $partida_id    = (int)($_POST['partida_id']    ?? 0);
+    $gols_casa     = (int)($_POST['gols_casa']     ?? 0);
+    $gols_fora     = (int)($_POST['gols_fora']     ?? 0);
+    $stats_json    = $_POST['stats_json']    ?? '[]';
+    $nova_formacao = $_POST['nova_formacao'] ?? null;
+    $nova_tatica   = $_POST['nova_tatica']   ?? null;
 
-        // Atualiza estatísticas dos jogadores na DB
-        $timeUsuId = (int)($resultado['time_usuario_id'] ?? 0);
-        $notasCalc = [];
-        foreach ($elencoNotas as $j) $notasCalc[$j['nome']] = 6.0;
+    require_once __DIR__ . '/engine/season.php';
+    $res = finalizarPartidaUsuario($pdo, $save_id, $partida_id, $gols_casa, $gols_fora);
 
-        $evStats = []; // nome → [gols, assists, amarelos, vermelhos]
-        foreach ($pu['log'] as $ev) {
-            $isMeu = (int)($ev['time_id'] ?? 0) === $timeUsuId;
-            $nome  = $ev['jogador'] ?? '';
-            if ($ev['tipo'] === 'gol') {
-                if ($isMeu && isset($notasCalc[$nome])) {
-                    $notasCalc[$nome] = min(10, $notasCalc[$nome] + 1.33);
-                    if (!isset($evStats[$nome])) $evStats[$nome] = [0,0,0,0];
-                    $evStats[$nome][0]++;
-                }
-                if ($isMeu && !empty($ev['assistido'])) {
-                    $a = $ev['assistido'];
-                    if (isset($notasCalc[$a])) $notasCalc[$a] = min(10, $notasCalc[$a] + 1.0);
-                    if (!isset($evStats[$a])) $evStats[$a] = [0,0,0,0];
-                    $evStats[$a][1]++;
-                }
-                if (!$isMeu) {
-                    foreach ($notasCalc as &$n) $n = max(1, $n - 0.1);
-                    unset($n);
-                }
-            } elseif ($ev['tipo'] === 'defesa' && $isMeu && isset($notasCalc[$nome])) {
-                $notasCalc[$nome] = min(10, $notasCalc[$nome] + 0.4);
-            } elseif ($ev['tipo'] === 'amarelo' && $isMeu) {
-                if (isset($notasCalc[$nome])) $notasCalc[$nome] = max(1, $notasCalc[$nome] - 0.5);
-                if (!isset($evStats[$nome])) $evStats[$nome] = [0,0,0,0];
-                $evStats[$nome][2]++;
-            } elseif ($ev['tipo'] === 'vermelho' && $isMeu) {
-                if (isset($notasCalc[$nome])) $notasCalc[$nome] = max(1, $notasCalc[$nome] - 1.5);
-                if (!isset($evStats[$nome])) $evStats[$nome] = [0,0,0,0];
-                $evStats[$nome][3]++;
+    if ($res['ok']) {
+        $statsArr = json_decode($stats_json, true) ?: [];
+        if (!empty($statsArr)) {
+            $stmtStats = $pdo->prepare(
+                "UPDATE ecofut_elenco
+                 SET partidas   = partidas   + 1,
+                     gols       = gols       + ?,
+                     assists    = assists    + ?,
+                     amarelos   = amarelos   + ?,
+                     vermelhos  = vermelhos  + ?,
+                     nota_total = nota_total + ?
+                 WHERE id = ? AND save_id = ?"
+            );
+            foreach ($statsArr as $stat) {
+                $stmtStats->execute([
+                    (int)($stat['gols']      ?? 0),
+                    (int)($stat['assists']   ?? 0),
+                    (int)($stat['amarelos']  ?? 0),
+                    (int)($stat['vermelhos'] ?? 0),
+                    (float)($stat['nota']    ?? 6.0),
+                    (int)($stat['id']        ?? 0),
+                    $save_id,
+                ]);
             }
         }
 
-        $stmtStats = $pdo->prepare(
-            "UPDATE ecofut_elenco
-             SET partidas   = partidas   + 1,
-                 gols       = gols       + ?,
-                 assists    = assists    + ?,
-                 amarelos   = amarelos   + ?,
-                 vermelhos  = vermelhos  + ?,
-                 nota_total = nota_total + ?
-             WHERE id = ? AND save_id = ?"
-        );
-        foreach ($elencoNotas as $j) {
-            $evs  = $evStats[$j['nome']] ?? [0,0,0,0];
-            $nota = $notasCalc[$j['nome']] ?? 6.0;
-            $stmtStats->execute([$evs[0], $evs[1], $evs[2], $evs[3], $nota, $j['id'], $saveId]);
+        $formacoes_validas = ['4-3-3','4-4-2','4-2-3-1','3-5-2','5-3-2','4-1-4-1','3-4-3'];
+        if ($nova_formacao || $nova_tatica) {
+            $rowDados = $pdo->prepare("SELECT dados_json FROM ecofut_saves WHERE id = ?");
+            $rowDados->execute([$save_id]);
+            $dados = json_decode($rowDados->fetchColumn() ?: '{}', true) ?: [];
+            if ($nova_formacao && in_array($nova_formacao, $formacoes_validas)) $dados['formacao'] = $nova_formacao;
+            if ($nova_tatica   && in_array($nova_tatica, ['normal','ataque','defensivo'])) $dados['tatica'] = $nova_tatica;
+            $pdo->prepare("UPDATE ecofut_saves SET dados_json=? WHERE id=?")->execute([json_encode($dados), $save_id]);
         }
-    } else {
-        unset($_SESSION['ecofut_log_partida']);
+
+        unset($_SESSION['ecofut_match_setup'], $_SESSION['ecofut_match_auto_open']);
     }
 
     header("Location: ?page=app");
@@ -388,6 +360,8 @@ if ($action === 'salvar_escalacao') {
         $dados = json_decode($row->fetchColumn() ?: '{}', true) ?: [];
         $dados['formacao']  = $formacao;
         $dados['banco_ids'] = $bancoIds;
+        $taticaPost = $_POST['tatica'] ?? '';
+        if (in_array($taticaPost, ['normal','ataque','defensivo'])) $dados['tatica'] = $taticaPost;
         $pdo->prepare("UPDATE ecofut_saves SET dados_json = ? WHERE id = ?")
             ->execute([json_encode($dados), $save_id]);
 
