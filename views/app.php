@@ -1286,11 +1286,6 @@ trocarAba('elenco');
 
     const SPEEDS = {1: 900, 2: 450, 4: 200};
     const POS_ORDER = {GOL:0,ZAG:1,LD:2,LE:3,VOL:4,MC:5,MEI:6,PE:7,PD:8,ATA:9};
-    const TAT_MOD = {
-        normal:    {atk:1.00, def:1.00},
-        ataque:    {atk:1.30, def:0.80},
-        defensivo: {atk:0.75, def:1.25},
-    };
     const SCORER_W = {GOL:0,ZAG:1,LD:1,LE:1,VOL:3,MC:5,MEI:8,PE:10,PD:10,ATA:15};
 
     function mvData() { return window.MATCH_SETUP || null; }
@@ -1416,14 +1411,30 @@ trocarAba('elenco');
         return c.length ? c[Math.floor(Math.random() * c.length)] : null;
     }
     function calcLambdaPerMin(d) {
-        const tat = TAT_MOD[mvTaticaAtual] || TAT_MOD.normal;
         const ratio    = d.forca_meu / (d.forca_adv || 65);
-        const ratioAdv = d.forca_adv / (d.forca_meu || 65);
+        const ratioAdv = (d.forca_adv || 65) / (d.forca_meu || 65);
         const hb  = d.eh_casa ? 1.1 : 1.0;
         const hbA = d.eh_casa ? 1.0 : 1.1;
-        const lM = Math.min(5, Math.max(0.3, 1.5 * Math.sqrt(ratio)    * tat.atk * hb));
-        const lA = Math.min(5, Math.max(0.3, 1.5 * Math.sqrt(ratioAdv) / tat.def * hbA));
-        return {meu: lM / 90, adv: lA / 90};
+
+        let lM = 1.5 * Math.sqrt(ratio)    * hb;
+        let lA = 1.5 * Math.sqrt(ratioAdv) * hbA;
+
+        if (mvTaticaAtual === 'ataque') {
+            // Ataque: bônus ofensivo escala com sua força relativa
+            // Quanto mais forte você é, mais eficaz o ataque
+            lM *= 1.0 + 0.25 * Math.min(ratio, 1.5);   // +25% no equilíbrio, até +37.5% sendo 50% mais forte
+            lA *= 1.20;                                  // sempre fica mais exposto
+        } else if (mvTaticaAtual === 'defensivo') {
+            // Defensivo: proteção escala com a força do adversário
+            // Quanto mais forte o adversário, mais a tática reduz os gols sofridos
+            lA *= 1.0 - 0.20 * Math.min(ratioAdv, 1.5); // -20% no equilíbrio, até -30% sendo 50% mais fraco
+            lM *= 0.75;                                   // sempre ataca menos
+        }
+
+        return {
+            meu: Math.min(5, Math.max(0.3, lM)) / 90,
+            adv: Math.min(5, Math.max(0.3, lA)) / 90,
+        };
     }
     function simMinuto(min) {
         const d = mvData(); if (!d) return [];
