@@ -315,12 +315,24 @@ function aplicarDesgastePosJogo(PDO $pdo, int $saveId, array $resultado, int $ti
 }
 
 /**
- * Recupera energia dos jogadores que não jogaram (+ recuperação passiva por semana).
+ * Recupera energia dos jogadores que não jogaram e decrementa contador de lesões.
  */
 function recuperarEnergiaBancoLesionados(PDO $pdo, int $saveId): void {
     $pdo->prepare(
         "UPDATE ecofut_elenco
          SET energia = LEAST(100, energia + 10)
          WHERE save_id = ? AND (contundido = 1 OR suspenso = 1 OR titular = 0)"
+    )->execute([$saveId]);
+
+    // Decrementa timer de lesão
+    $pdo->prepare(
+        "UPDATE ecofut_elenco SET lesoes_rodadas = lesoes_rodadas - 1
+         WHERE save_id = ? AND contundido = 1 AND lesoes_rodadas > 0"
+    )->execute([$saveId]);
+
+    // Recupera jogadores cujo timer de lesão chegou a zero
+    $pdo->prepare(
+        "UPDATE ecofut_elenco SET contundido = 0
+         WHERE save_id = ? AND contundido = 1 AND lesoes_rodadas <= 0"
     )->execute([$saveId]);
 }

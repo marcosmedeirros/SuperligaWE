@@ -147,10 +147,37 @@ if ($page === 'app' && $db_connected && isset($_SESSION['ecofut_save_id'])) {
 
     // Match setup pendente (partida do usuário a ser simulada no cliente)
     if (isset($_SESSION['ecofut_match_setup'])) {
-        $page_data['match_setup']    = $_SESSION['ecofut_match_setup'];
+        $page_data['match_setup']     = $_SESSION['ecofut_match_setup'];
         $page_data['match_auto_open'] = !empty($_SESSION['ecofut_match_auto_open']);
         unset($_SESSION['ecofut_match_auto_open']);
     }
+
+    // Copa
+    $copaStmt = $pdo->prepare(
+        "SELECT c.*, tc.nome AS nome_casa, tf.nome AS nome_fora
+         FROM ecofut_copa c
+         JOIN ecofut_times tc ON tc.id = c.time_casa_id
+         JOIN ecofut_times tf ON tf.id = c.time_fora_id
+         WHERE c.save_id = ?
+         ORDER BY FIELD(c.fase,'quartas','semifinal','final'), c.id ASC"
+    );
+    $copaStmt->execute([$save_id]);
+    $page_data['copa'] = $copaStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Artilheiros do elenco
+    $artStmt = $pdo->prepare(
+        "SELECT nome, posicao, gols, assists
+         FROM ecofut_elenco
+         WHERE save_id = ? AND (gols > 0 OR assists > 0)
+         ORDER BY gols DESC, assists DESC LIMIT 10"
+    );
+    $artStmt->execute([$save_id]);
+    $page_data['artilheiros'] = $artStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Jovem revelado e notificação de temporada (da dados_json)
+    $dadosJsonParsedDP = json_decode($saveRow['dados_json'] ?? '{}', true) ?: [];
+    $page_data['jovem_revelado']         = $dadosJsonParsedDP['jovem_revelado']       ?? null;
+    $page_data['notificacao_temporada']  = $dadosJsonParsedDP['notificacao_temporada'] ?? null;
 
     endif; // if ($saveRow)
 }

@@ -191,18 +191,20 @@ if ($action === 'salvar_partida_usuario') {
         header("Location: ?page=app"); exit;
     }
 
-    $save_id       = (int)$_SESSION['ecofut_save_id'];
-    $partida_id    = (int)($_POST['partida_id']    ?? 0);
-    $gols_casa     = (int)($_POST['gols_casa']     ?? 0);
-    $gols_fora     = (int)($_POST['gols_fora']     ?? 0);
-    $stats_json    = $_POST['stats_json']    ?? '[]';
-    $nova_formacao = $_POST['nova_formacao'] ?? null;
-    $nova_tatica   = $_POST['nova_tatica']   ?? null;
+    $save_id         = (int)$_SESSION['ecofut_save_id'];
+    $partida_id      = (int)($_POST['partida_id']      ?? 0);
+    $gols_casa       = (int)($_POST['gols_casa']       ?? 0);
+    $gols_fora       = (int)($_POST['gols_fora']       ?? 0);
+    $stats_json      = $_POST['stats_json']      ?? '[]';
+    $lesionados_json = $_POST['lesionados_json'] ?? '[]';
+    $nova_formacao   = $_POST['nova_formacao']   ?? null;
+    $nova_tatica     = $_POST['nova_tatica']     ?? null;
 
     require_once __DIR__ . '/engine/season.php';
     $res = finalizarPartidaUsuario($pdo, $save_id, $partida_id, $gols_casa, $gols_fora);
 
     if ($res['ok']) {
+        // Stats dos jogadores
         $statsArr = json_decode($stats_json, true) ?: [];
         if (!empty($statsArr)) {
             $stmtStats = $pdo->prepare(
@@ -225,6 +227,18 @@ if ($action === 'salvar_partida_usuario') {
                     (int)($stat['id']        ?? 0),
                     $save_id,
                 ]);
+            }
+        }
+
+        // Jogadores lesionados durante a partida
+        $lesionadosArr = json_decode($lesionados_json, true) ?: [];
+        if (!empty($lesionadosArr)) {
+            $stmtLes = $pdo->prepare(
+                "UPDATE ecofut_elenco SET contundido=1, lesoes_rodadas=? WHERE id=? AND save_id=?"
+            );
+            foreach ($lesionadosArr as $lesId) {
+                $duracao = rand(2, 5);
+                $stmtLes->execute([$duracao, (int)$lesId, $save_id]);
             }
         }
 
@@ -251,8 +265,18 @@ if ($action === 'comprar_jogador') {
         header("Location: ?page=app"); exit;
     }
 
-    $save_id        = (int)$_SESSION['ecofut_save_id'];
+    $save_id         = (int)$_SESSION['ecofut_save_id'];
     $jogador_base_id = (int)($_POST['jogador_base_id'] ?? 0);
+
+    // Verifica janela de transferências (rodadas 1-5 e 19-22)
+    $rodSave = $pdo->prepare("SELECT rodada_atual FROM ecofut_saves WHERE id = ?");
+    $rodSave->execute([$save_id]);
+    $rodAtual = (int)$rodSave->fetchColumn();
+    $janelaAberta = ($rodAtual >= 1 && $rodAtual <= 5) || ($rodAtual >= 19 && $rodAtual <= 22);
+    if (!$janelaAberta) {
+        $msg = "Janela fechada! Contratações permitidas nas rodadas 1–5 e 19–22.";
+        $msg_tipo = 'erro'; goto fim;
+    }
 
     // Busca dados base primeiro para calcular preço server-side
     $jBase = $pdo->prepare("SELECT * FROM ecofut_jogadores_base WHERE id = ?");
@@ -276,16 +300,23 @@ if ($action === 'comprar_jogador') {
     $jaElenco->execute([$save_id, $jogador_base_id]);
     if ($jaElenco->fetch()) { $msg = 'Jogador já está no seu elenco.'; $msg_tipo = 'erro'; goto fim; }
 
+    // Calcula potencial baseado na idade
+    $idadeJ    = (int)$j['idade'];
+    $forcaJ    = (int)$j['forca'];
+    $potencialJ = $idadeJ <= 20 ? min(99, $forcaJ + rand(8, 20))
+                : ($idadeJ <= 23 ? min(99, $forcaJ + rand(3, 10))
+                : $forcaJ);
+
     // Insere no elenco
     $pdo->prepare(
         "INSERT INTO ecofut_elenco
-         (save_id, time_id, jogador_base_id, nome, posicao, forca, idade, energia, moral,
+         (save_id, time_id, jogador_base_id, nome, posicao, forca, potencial, idade, energia, moral,
           contundido, suspenso, salario, meses_contrato, titular,
           sk_goleiro, sk_agilidade, sk_passe, sk_armacao, sk_desarme, sk_finalizacao, sk_tecnica)
-         VALUES (?,?,?,?,?,?,?,100,75,0,0,?,12,0,?,?,?,?,?,?,?)"
+         VALUES (?,?,?,?,?,?,?,?,100,75,0,0,?,12,0,?,?,?,?,?,?,?)"
     )->execute([
         $save_id, $saveData['time_id'], $j['id'], $j['nome'], $j['posicao'],
-        $j['forca'], $j['idade'], $j['salario'],
+        $forcaJ, $potencialJ, $idadeJ, $j['salario'],
         $j['sk_goleiro'], $j['sk_agilidade'], $j['sk_passe'],
         $j['sk_armacao'], $j['sk_desarme'], $j['sk_finalizacao'], $j['sk_tecnica'],
     ]);
@@ -371,6 +402,72 @@ if ($action === 'salvar_escalacao') {
         error_log('EcoFut salvar_escalacao: ' . $e->getMessage());
         $msg = 'Erro ao salvar escalação.'; $msg_tipo = 'erro'; goto fim;
     }
+}
+
+// ── RENOVAR CONTRATO ──────────────────────────────────────────────────────────
+if ($action === 'renovar_contrato') {
+    if (!$db_connected || !isset($_SESSION['ecofut_save_id'])) {
+        header("Location: ?page=app"); exit;
+    }
+
+    $save_id   = (int)$_SESSION['ecofut_save_id'];
+    $elenco_id = (int)($_POST['elenco_id'] ?? 0);
+
+    $jQ = $pdo->prepare("SELECT nome, salario FROM ecofut_elenco WHERE id = ? AND save_id = ?");
+    $jQ->execute([$elenco_id, $save_id]);
+    $jRow = $jQ->fetch();
+    if (!$jRow) { header("Location: ?page=app"); exit; }
+
+    $custo = (int)$jRow['salario'] * 3;
+
+    $saldoQ = $pdo->prepare("SELECT saldo FROM ecofut_saves WHERE id = ?");
+    $saldoQ->execute([$save_id]);
+    if ((int)$saldoQ->fetchColumn() < $custo) {
+        $msg = 'Saldo insuficiente para renovar contrato.'; $msg_tipo = 'erro'; goto fim;
+    }
+
+    $pdo->prepare("UPDATE ecofut_elenco SET meses_contrato = meses_contrato + 12 WHERE id = ? AND save_id = ?")->execute([$elenco_id, $save_id]);
+    $pdo->prepare("UPDATE ecofut_saves SET saldo = saldo - ? WHERE id = ?")->execute([$custo, $save_id]);
+    $pdo->prepare("INSERT INTO ecofut_financas (save_id, categoria, descricao, valor) VALUES (?, 'contratos', ?, ?)")
+        ->execute([$save_id, 'Renovação: ' . $jRow['nome'], -$custo]);
+
+    $_SESSION['ecofut_flash_aba'] = 'elenco';
+    header("Location: ?page=app"); exit;
+}
+
+// ── CONTRATAR REVELAÇÃO ───────────────────────────────────────────────────────
+if ($action === 'contratar_revelacao') {
+    if (!$db_connected || !isset($_SESSION['ecofut_save_id'])) {
+        header("Location: ?page=app"); exit;
+    }
+
+    $save_id = (int)$_SESSION['ecofut_save_id'];
+
+    $saveRow = $pdo->prepare("SELECT time_id, dados_json FROM ecofut_saves WHERE id = ?");
+    $saveRow->execute([$save_id]);
+    $saveData = $saveRow->fetch();
+    if (!$saveData) { header("Location: ?page=app"); exit; }
+
+    $dados = json_decode($saveData['dados_json'] ?? '{}', true) ?: [];
+    $jovem = $dados['jovem_revelado'] ?? null;
+    if (!$jovem) { $msg = 'Nenhum jovem disponível.'; $msg_tipo = 'erro'; goto fim; }
+
+    $pdo->prepare(
+        "INSERT INTO ecofut_elenco
+         (save_id, time_id, nome, posicao, forca, potencial, idade, energia, moral,
+          contundido, suspenso, salario, meses_contrato, titular)
+         VALUES (?,?,?,?,?,?,?,100,75,0,0,?,12,0)"
+    )->execute([
+        $save_id, $saveData['time_id'],
+        $jovem['nome'], $jovem['posicao'], $jovem['forca'],
+        $jovem['potencial'] ?? 75, $jovem['idade'], $jovem['salario'],
+    ]);
+
+    unset($dados['jovem_revelado']);
+    $pdo->prepare("UPDATE ecofut_saves SET dados_json = ? WHERE id = ?")->execute([json_encode($dados), $save_id]);
+
+    $_SESSION['ecofut_flash_aba'] = 'mercado';
+    header("Location: ?page=app"); exit;
 }
 
 fim:

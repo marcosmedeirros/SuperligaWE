@@ -1,13 +1,17 @@
 <?php
-$save        = $page_data['save']          ?? [];
-$elenco      = $page_data['elenco']        ?? [];
-$classificacao = $page_data['classificacao'] ?? [];
-$partidas    = $page_data['partidas']      ?? [];
-$financas    = $page_data['financas']      ?? [];
-$mercado     = $page_data['mercado']       ?? [];
-$time        = $page_data['time']          ?? [];
-$proxima     = $page_data['proxima_partida'] ?? null;
-$ultima      = $page_data['ultima_partida']  ?? null;
+$save          = $page_data['save']                 ?? [];
+$elenco        = $page_data['elenco']               ?? [];
+$classificacao = $page_data['classificacao']         ?? [];
+$partidas      = $page_data['partidas']              ?? [];
+$financas      = $page_data['financas']              ?? [];
+$mercado       = $page_data['mercado']               ?? [];
+$time          = $page_data['time']                  ?? [];
+$proxima       = $page_data['proxima_partida']       ?? null;
+$ultima        = $page_data['ultima_partida']        ?? null;
+$copa          = $page_data['copa']                  ?? [];
+$artilheiros   = $page_data['artilheiros']           ?? [];
+$jovemRevelado = $page_data['jovem_revelado']        ?? null;
+$notifTemp     = $page_data['notificacao_temporada'] ?? null;
 
 $nome_time  = $save['nome_time']      ?? 'Meu Time';
 $treinador  = $save['nome_treinador'] ?? 'Treinador';
@@ -32,15 +36,18 @@ unset($_SESSION['ecofut_flash_aba']);
 
 // Elenco data for JS
 $elencoEscalacao = array_map(fn($j) => [
-    'id'        => (int)$j['id'],
-    'nome'      => $j['nome'],
-    'posicao'   => $j['posicao'],
-    'forca'     => (int)$j['forca'],
-    'titular'   => (int)($j['titular'] ?? 0),
-    'energia'   => (int)($j['energia'] ?? 100),
-    'moral'     => (int)($j['moral'] ?? 75),
-    'contundido'=> (int)($j['contundido'] ?? 0),
-    'suspenso'  => (int)($j['suspenso'] ?? 0),
+    'id'             => (int)$j['id'],
+    'nome'           => $j['nome'],
+    'posicao'        => $j['posicao'],
+    'forca'          => (int)$j['forca'],
+    'potencial'      => (int)($j['potencial']      ?? 70),
+    'titular'        => (int)($j['titular']        ?? 0),
+    'energia'        => (int)($j['energia']        ?? 100),
+    'moral'          => (int)($j['moral']          ?? 75),
+    'contundido'     => (int)($j['contundido']     ?? 0),
+    'suspenso'       => (int)($j['suspenso']       ?? 0),
+    'meses_contrato' => (int)($j['meses_contrato'] ?? 12),
+    'lesoes_rodadas' => (int)($j['lesoes_rodadas'] ?? 0),
 ], $elenco);
 
 $cor1 = $time['cor1'] ?? '#22c55e';
@@ -201,6 +208,45 @@ $posicoesCampo = [
         </div>
     </div>
 
+    <!-- Notificação de fim de temporada -->
+    <?php if ($notifTemp): ?>
+    <?php
+    $ntCor  = $notifTemp['rebaixado'] ? 'border-red-500/40' : ($notifTemp['campeao'] ? 'border-yellow-400/40' : 'border-slate-700');
+    $ntIcon = $notifTemp['rebaixado'] ? 'fa-arrow-down text-red-400' : ($notifTemp['campeao'] ? 'fa-trophy text-yellow-400' : 'fa-flag-checkered text-slate-400');
+    $ntMsg  = $notifTemp['rebaixado']
+        ? "Rebaixado! Temporada {$notifTemp['temporada']} encerrada no {$notifTemp['posicao']}º lugar. Multa de R$1M aplicada."
+        : ($notifTemp['campeao']
+            ? "CAMPEÃO! Temporada {$notifTemp['temporada']} encerrada em 1º lugar!"
+            : "Temporada {$notifTemp['temporada']} encerrada — {$notifTemp['posicao']}º lugar." . ($notifTemp['continental'] ? " Vaga continental garantida!" : ""));
+    ?>
+    <div class="bg-slate-900 border <?= $ntCor ?> rounded-2xl p-4 mb-4">
+        <p class="text-sm font-bold text-white mb-1"><i class="fas <?= $ntIcon ?> mr-2"></i><?= htmlspecialchars($ntMsg) ?></p>
+        <?php if (!empty($notifTemp['jogadores_saindo'])): ?>
+        <p class="text-xs text-slate-500 mt-1"><i class="fas fa-door-open mr-1"></i>Contratos encerrados: <?= implode(', ', array_map('htmlspecialchars', $notifTemp['jogadores_saindo'])) ?></p>
+        <?php endif; ?>
+        <p class="text-xs text-slate-600 mt-1">Nova temporada iniciada. Bom jogo!</p>
+    </div>
+    <?php endif; ?>
+
+    <!-- Jovem revelado disponível -->
+    <?php if ($jovemRevelado): ?>
+    <div class="bg-slate-900 border border-purple-500/40 rounded-2xl p-4 mb-4">
+        <p class="text-xs font-bold text-purple-400 mb-2"><i class="fas fa-star mr-1.5"></i>Jovem Revelado Disponível!</p>
+        <div class="flex items-center justify-between gap-3">
+            <div>
+                <p class="font-bold text-white text-sm"><?= htmlspecialchars($jovemRevelado['nome']) ?></p>
+                <p class="text-xs text-slate-400"><?= $jovemRevelado['posicao'] ?> · OVR <?= $jovemRevelado['forca'] ?> · Pot <?= $jovemRevelado['potencial'] ?> · <?= $jovemRevelado['idade'] ?> anos</p>
+            </div>
+            <form method="POST" action="?page=app">
+                <input type="hidden" name="action" value="contratar_revelacao">
+                <button class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition">
+                    <i class="fas fa-user-plus mr-1"></i>Contratar Grátis
+                </button>
+            </form>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- Partida pendente (match_setup na sessão) -->
     <?php if ($matchSetup): ?>
     <div class="bg-slate-900 border border-yellow-500/40 rounded-2xl p-5 mb-4">
@@ -337,6 +383,37 @@ $posicoesCampo = [
         <p class="text-[10px] text-slate-600 mt-2"><i class="fas fa-info-circle mr-1"></i>Selecione um jogador da lista e clique num slot no campo para escalar. Clique em dois jogadores para trocar posições.</p>
     </div>
 
+    <!-- Contratos expirando -->
+    <?php $contratosExpirando = array_filter($elenco, fn($j) => (int)($j['meses_contrato'] ?? 12) <= 6); ?>
+    <?php if (!empty($contratosExpirando)): ?>
+    <div class="bg-slate-900 border border-orange-500/30 rounded-2xl p-4 mb-4">
+        <h3 class="text-sm font-bold text-orange-400 mb-3"><i class="fas fa-clock mr-2"></i>Contratos Expirando</h3>
+        <div class="space-y-2">
+            <?php foreach ($contratosExpirando as $j):
+                $custRen = (int)$j['salario'] * 3;
+                $podRen  = $saldo >= $custRen;
+                $mesCor  = (int)$j['meses_contrato'] <= 2 ? 'text-red-400' : 'text-orange-400';
+            ?>
+            <div class="flex items-center gap-3 p-2.5 bg-slate-800/50 rounded-xl">
+                <div class="flex-1 min-w-0">
+                    <span class="text-sm text-white font-medium"><?= htmlspecialchars($j['nome']) ?></span>
+                    <span class="text-xs <?= $mesCor ?> ml-2"><?= (int)$j['meses_contrato'] <= 0 ? 'Expirando!' : $j['meses_contrato'].' meses' ?></span>
+                    <span class="text-xs text-slate-500 ml-1">· <?= posLabel($j['posicao']) ?> OVR <?= $j['forca'] ?></span>
+                </div>
+                <form method="POST" action="?page=app" class="inline flex-shrink-0">
+                    <input type="hidden" name="action" value="renovar_contrato">
+                    <input type="hidden" name="elenco_id" value="<?= $j['id'] ?>">
+                    <button <?= $podRen ? '' : 'disabled' ?>
+                        class="text-xs font-bold px-3 py-1.5 rounded-lg transition <?= $podRen ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-slate-700 text-slate-500 cursor-not-allowed' ?>">
+                        Renovar (<?= appSaldo($custRen) ?>)
+                    </button>
+                </form>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- Campo + listas -->
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
 
@@ -448,6 +525,26 @@ $posicoesCampo = [
             </div>
         </div>
 
+        <!-- Artilharia -->
+        <?php if (!empty($artilheiros)): ?>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+            <div class="p-4 border-b border-slate-800">
+                <h3 class="text-sm font-bold text-white"><i class="fas fa-futbol text-green-400 mr-2"></i>Artilharia — Seu Elenco</h3>
+            </div>
+            <div class="divide-y divide-slate-800">
+                <?php foreach ($artilheiros as $i => $art): ?>
+                <div class="px-4 py-2.5 flex items-center gap-3">
+                    <span class="text-xs font-bold text-slate-500 w-5">#{<?= $i+1 ?>}</span>
+                    <span class="text-xs font-semibold text-white flex-1"><?= htmlspecialchars($art['nome']) ?></span>
+                    <span class="text-[10px] text-slate-500"><?= $art['posicao'] ?></span>
+                    <?php if ($art['gols'] > 0): ?><span class="text-xs font-bold text-green-400">⚽ <?= $art['gols'] ?></span><?php endif; ?>
+                    <?php if ($art['assists'] > 0): ?><span class="text-xs font-bold text-blue-400 ml-1">🅰 <?= $art['assists'] ?></span><?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- Jogos da rodada atual -->
         <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             <div class="p-4 border-b border-slate-800 flex items-center justify-between">
@@ -477,6 +574,46 @@ $posicoesCampo = [
             </div>
         </div>
     </div>
+
+    <!-- Copa Nacional -->
+    <?php if (!empty($copa)): ?>
+    <?php
+    $copaFases = ['quartas' => 'Quartas de Final', 'semifinal' => 'Semifinal', 'final' => 'Final'];
+    $copaAgrupado = [];
+    foreach ($copa as $c) { $copaAgrupado[$c['fase']][] = $c; }
+    ?>
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mt-4">
+        <div class="p-4 border-b border-slate-800">
+            <h3 class="text-sm font-bold text-white"><i class="fas fa-shield-alt text-yellow-400 mr-2"></i>Copa Nacional</h3>
+        </div>
+        <div class="p-4 space-y-4">
+            <?php foreach (['quartas','semifinal','final'] as $fase):
+                if (empty($copaAgrupado[$fase])) continue; ?>
+            <div>
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2"><?= $copaFases[$fase] ?></p>
+                <div class="space-y-1.5">
+                    <?php foreach ($copaAgrupado[$fase] as $cm):
+                        $minha = ((int)$cm['time_casa_id'] === $timeId || (int)$cm['time_fora_id'] === $timeId);
+                        $jogada = $cm['status'] === 'jogada';
+                    ?>
+                    <div class="flex items-center gap-2 px-3 py-2 rounded-lg <?= $minha ? 'bg-green-500/8 border border-green-500/20' : 'bg-slate-800/40' ?>">
+                        <span class="text-xs <?= $minha && (int)$cm['time_casa_id'] === $timeId ? 'text-green-400 font-bold' : 'text-slate-300' ?> text-right flex-1 truncate"><?= htmlspecialchars($cm['nome_casa']) ?></span>
+                        <span class="text-center flex-shrink-0 min-w-[56px] text-center">
+                            <?php if ($jogada): ?>
+                            <span class="font-black text-white text-sm"><?= $cm['gols_casa'] ?>–<?= $cm['gols_fora'] ?></span>
+                            <?php else: ?>
+                            <span class="text-slate-600 text-xs">vs</span>
+                            <?php endif; ?>
+                        </span>
+                        <span class="text-xs <?= $minha && (int)$cm['time_fora_id'] === $timeId ? 'text-green-400 font-bold' : 'text-slate-300' ?> text-left flex-1 truncate"><?= htmlspecialchars($cm['nome_fora']) ?></span>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
 </section>
 
 <?php /* tab-jogar removida — funcionalidade integrada ao dashboard */ ?>
@@ -811,13 +948,52 @@ $posicoesCampo = [
 <!-- ABA: MERCADO                                                              -->
 <!-- ══════════════════════════════════════════════════════════════════════════ -->
 <section id="tab-mercado" class="tab-content">
+    <?php
+    $janelaAberta = ($rodada >= 1 && $rodada <= 5) || ($rodada >= 19 && $rodada <= 22);
+    ?>
+    <!-- Janela de transferências -->
+    <div class="flex items-center gap-3 mb-4 p-3 rounded-xl <?= $janelaAberta ? 'bg-green-500/10 border border-green-500/30' : 'bg-slate-800/50 border border-slate-700' ?>">
+        <i class="fas fa-door-<?= $janelaAberta ? 'open text-green-400' : 'closed text-slate-500' ?>"></i>
+        <div>
+            <p class="text-xs font-bold <?= $janelaAberta ? 'text-green-400' : 'text-slate-400' ?>">
+                Janela de Transferências: <?= $janelaAberta ? 'ABERTA' : 'FECHADA' ?>
+            </p>
+            <p class="text-[10px] text-slate-500">Contratações permitidas nas rodadas 1–5 e 19–22</p>
+        </div>
+        <span class="ml-auto text-xs text-slate-500">Rodada <?= $rodada ?></span>
+    </div>
+
+    <!-- Jovem Revelado no mercado -->
+    <?php if ($jovemRevelado): ?>
+    <div class="bg-slate-900 border border-purple-500/30 rounded-2xl p-4 mb-4">
+        <h3 class="text-sm font-bold text-purple-400 mb-3"><i class="fas fa-star mr-2"></i>Revelação da Base</h3>
+        <div class="flex items-center gap-4">
+            <div class="flex-1">
+                <p class="font-bold text-white"><?= htmlspecialchars($jovemRevelado['nome']) ?></p>
+                <p class="text-xs text-slate-400 mt-0.5">
+                    <?= $jovemRevelado['posicao'] ?> · OVR <span class="text-white font-bold"><?= $jovemRevelado['forca'] ?></span>
+                    · Potencial <span class="text-purple-400 font-bold"><?= $jovemRevelado['potencial'] ?></span>
+                    · <?= $jovemRevelado['idade'] ?> anos
+                    · Salário <?= appSaldo($jovemRevelado['salario']) ?>/mês
+                </p>
+            </div>
+            <form method="POST" action="?page=app">
+                <input type="hidden" name="action" value="contratar_revelacao">
+                <button class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition">
+                    <i class="fas fa-user-plus mr-1"></i>Contratar Grátis
+                </button>
+            </form>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         <!-- Jogadores disponíveis para compra -->
         <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             <div class="p-4 border-b border-slate-800 flex items-center justify-between">
                 <h3 class="text-sm font-bold text-white"><i class="fas fa-store text-yellow-400 mr-2"></i>Jogadores Disponíveis</h3>
-                <span class="text-xs text-slate-500"><?= count($mercado) ?> no mercado</span>
+                <span class="text-xs <?= $janelaAberta ? 'text-green-400' : 'text-orange-400' ?> text-xs"><?= $janelaAberta ? count($mercado).' no mercado' : 'Janela fechada' ?></span>
             </div>
             <div class="overflow-y-auto" style="max-height:480px">
                 <table class="w-full text-xs">
@@ -902,12 +1078,13 @@ $posicoesCampo = [
 <!-- Formulário oculto para salvar resultado da partida -->
 <form id="form-resultado-partida" method="POST" action="?page=app" style="display:none">
     <input type="hidden" name="action" value="salvar_partida_usuario">
-    <input type="hidden" name="partida_id"    id="res-partida-id"    value="">
-    <input type="hidden" name="gols_casa"     id="res-gols-casa"     value="">
-    <input type="hidden" name="gols_fora"     id="res-gols-fora"     value="">
-    <input type="hidden" name="stats_json"    id="res-stats-json"    value="">
-    <input type="hidden" name="nova_formacao" id="res-nova-formacao" value="">
-    <input type="hidden" name="nova_tatica"   id="res-nova-tatica"   value="">
+    <input type="hidden" name="partida_id"      id="res-partida-id"      value="">
+    <input type="hidden" name="gols_casa"       id="res-gols-casa"       value="">
+    <input type="hidden" name="gols_fora"       id="res-gols-fora"       value="">
+    <input type="hidden" name="stats_json"      id="res-stats-json"      value="">
+    <input type="hidden" name="nova_formacao"   id="res-nova-formacao"   value="">
+    <input type="hidden" name="nova_tatica"     id="res-nova-tatica"     value="">
+    <input type="hidden" name="lesionados_json" id="res-lesionados-json" value="">
 </form>
 
 <script>
@@ -1104,9 +1281,25 @@ trocarAba('elenco');
         const sf = slotForJ(j.id);
         const wrong = tipo === 'tit' && sf && !isCompat(sf.pos, j.posicao);
         const ec = j.energia >= 70 ? '#22c55e' : (j.energia >= 40 ? '#eab308' : '#ef4444');
-        const status = j.contundido ? '<i class="fas fa-bandage" style="color:#f87171;font-size:9px"></i> ' : (j.suspenso ? '<span style="display:inline-block;width:8px;height:11px;background:#facc15;border-radius:1px;vertical-align:middle"></span> ' : '');
+        const status = j.contundido
+            ? `<i class="fas fa-bandage" style="color:#f87171;font-size:9px" title="Contundido — ${j.lesoes_rodadas}R"></i> `
+            : (j.suspenso ? '<span style="display:inline-block;width:8px;height:11px;background:#facc15;border-radius:1px;vertical-align:middle"></span> ' : '');
         const nc = wrong ? '#f87171' : (sel ? '#86efac' : '#f1f5f9');
         const rowBg = sel ? 'background:rgba(71,85,105,0.6);outline:1px solid rgba(34,197,94,0.35);outline-offset:-1px;' : '';
+
+        // Badge: duração de lesão
+        const lesBadge = j.contundido && j.lesoes_rodadas > 0
+            ? `<span style="font-size:8px;color:#f87171;font-weight:700;flex-shrink:0">${j.lesoes_rodadas}R</span>`
+            : '';
+        // Badge: contrato expirando
+        const ctBadge = j.meses_contrato <= 3
+            ? `<span style="font-size:8px;color:#f97316;font-weight:700;flex-shrink:0" title="Contrato: ${j.meses_contrato}m">⚠</span>`
+            : (j.meses_contrato <= 6 ? `<span style="font-size:8px;color:#eab308;flex-shrink:0" title="Contrato: ${j.meses_contrato}m">⚠</span>` : '');
+        // Badge: potencial acima da força atual
+        const potBadge = (j.potencial - j.forca) >= 5
+            ? `<span style="font-size:8px;color:#a78bfa;font-weight:700;flex-shrink:0" title="Potencial ${j.potencial}">↑${j.potencial}</span>`
+            : '';
+
         let btns = '';
         if (tipo === 'tit')
             btns = `<button type="button" onclick="event.stopPropagation();EF.tirarTitular(${j.id})" style="font-size:9px;background:rgba(239,68,68,.15);color:#f87171;padding:1px 6px;border-radius:4px;margin-left:2px;flex-shrink:0;cursor:pointer">Tirar</button>`;
@@ -1114,11 +1307,12 @@ trocarAba('elenco');
             btns = `<button type="button" onclick="event.stopPropagation();EF.escalarBanco(${j.id})" style="font-size:9px;background:rgba(34,197,94,.15);color:#4ade80;padding:1px 6px;border-radius:4px;margin-left:2px;flex-shrink:0;cursor:pointer">Escalar</button><button type="button" onclick="event.stopPropagation();EF.tirarBanco(${j.id})" style="font-size:9px;background:#1e293b;color:#94a3b8;padding:1px 6px;border-radius:4px;margin-left:2px;flex-shrink:0;cursor:pointer">Tirar</button>`;
         else
             btns = `<button type="button" onclick="event.stopPropagation();EF.addBanco(${j.id})" style="font-size:9px;background:rgba(59,130,246,.15);color:#60a5fa;padding:1px 6px;border-radius:4px;margin-left:2px;flex-shrink:0;cursor:pointer">Banco</button>`;
-        return `<div onclick="EF.clickJogador(${j.id})" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-bottom:1px solid #1e293b;cursor:pointer;${rowBg}" onmouseenter="if(!this.style.outline)this.style.background='rgba(30,41,59,0.5)'" onmouseleave="this.style.background='${sel?'rgba(71,85,105,0.6)':''}'" >
+        return `<div onclick="EF.clickJogador(${j.id})" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-bottom:1px solid #1e293b;cursor:pointer;${rowBg}" onmouseenter="if(!this.style.outline)this.style.background='rgba(30,41,59,0.5)'" onmouseleave="this.style.background='${sel?'rgba(71,85,105,0.6)':''}'" >
             <span style="color:${pColor(j.posicao)};font-size:9px;font-weight:900;flex-shrink:0;width:24px">${pLabel(j.posicao)}</span>
             <span style="flex-shrink:0">${status}</span>
             <span style="font-size:11px;font-weight:600;color:${nc};flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${j.nome}</span>
             <span style="font-size:10px;color:#64748b;flex-shrink:0">${j.forca}</span>
+            ${potBadge}${ctBadge}${lesBadge}
             <span style="font-size:9px;color:${ec};flex-shrink:0">${j.energia}⚡</span>
             ${wrong ? '<i class="fas fa-triangle-exclamation" style="color:#f87171;font-size:9px;flex-shrink:0"></i>' : ''}
             ${btns}
@@ -1283,6 +1477,7 @@ trocarAba('elenco');
     let mvFormacaoAtual = '4-3-3';
     let mvJogAdv = [];    // [{nome, posicao}] titulares do adversário
     let mvEvtLog = [];    // todos os eventos gerados (para o popup final)
+    let mvLesionados = []; // ids de jogadores lesionados durante o jogo
 
     const SPEEDS = {1: 900, 2: 450, 4: 200};
     const POS_ORDER = {GOL:0,ZAG:1,LD:2,LE:3,VOL:4,MC:5,MEI:6,PE:7,PD:8,ATA:9};
@@ -1351,6 +1546,10 @@ trocarAba('elenco');
         } else if (ev.tipo === 'falta') {
             icon = '<i class="fas fa-whistle" style="color:#94a3b8;font-size:10px"></i>';
             txt = `<span style="color:#94a3b8">Falta — ${ev.jogador}</span>`;
+        } else if (ev.tipo === 'lesao') {
+            icon = '🚑';
+            txt = `<strong style="color:#f97316">${ev.jogador}</strong> <span style="color:#64748b;font-size:9px">saiu lesionado</span>`;
+            rowColor = 'rgba(249,115,22,0.12)';
         } else if (ev.tipo === 'sub') {
             icon = '<i class="fas fa-exchange-alt" style="color:#a78bfa;font-size:10px"></i>';
             txt = ev.saiu
@@ -1395,6 +1594,8 @@ trocarAba('elenco');
                 mvNotas[ev.jogador].nota = Math.max(1, mvNotas[ev.jogador].nota - 1.5);
                 mvNotas[ev.jogador].vermelhos = (mvNotas[ev.jogador].vermelhos || 0) + 1;
             }
+        } else if (ev.tipo === 'lesao' && isMeu) {
+            if (mvNotas[ev.jogador]) mvNotas[ev.jogador].nota = Math.max(1, mvNotas[ev.jogador].nota - 1.0);
         }
     }
 
@@ -1464,6 +1665,11 @@ trocarAba('elenco');
                 evs.push({tipo:'amarelo', minuto:min, time:advSide, time_id:advId, jogador:j.nome});
             }
         }
+        // Lesão: ~0.12% por minuto = ~1 a cada 9 jogos para o time do usuário
+        if (Math.random() < 0.0012 && mvTitulares.length > 1) {
+            const j = mvTitulares[Math.floor(Math.random()*mvTitulares.length)];
+            evs.push({tipo:'lesao', minuto:min, time:meuSide, time_id:d.meu_time_id, jogador:j.nome, jogador_id:j.id});
+        }
         return evs;
     }
     function mvProcessEvento(ev) {
@@ -1474,6 +1680,28 @@ trocarAba('elenco');
             document.getElementById('mv-gols-fora').textContent = mvScore.fora;
         }
         if (['gol','amarelo','vermelho'].includes(ev.tipo)) mvEvtLog.push(ev);
+
+        // Lesão: remove do campo e faz substituição automática se houver banco disponível
+        if (ev.tipo === 'lesao' && ev.time_id === d.meu_time_id) {
+            if (ev.jogador_id) mvLesionados.push(ev.jogador_id);
+            const idx = mvTitulares.findIndex(j => j.nome === ev.jogador);
+            if (idx >= 0 && mvBanco.length > 0 && mvSubCount < 5) {
+                const sai = mvTitulares[idx];
+                const entra = mvBanco.shift();
+                entra.posicao = sai.posicao;
+                mvTitulares.splice(idx, 1, entra);
+                if (!mvNotas[entra.nome]) mvNotas[entra.nome] = {nota:6.0,gols:0,assists:0,amarelos:0,vermelhos:0,posicao:sai.posicao,titular:true,id:entra.id||0};
+                else { mvNotas[entra.nome].titular = true; mvNotas[entra.nome].posicao = sai.posicao; }
+                if (mvNotas[sai.nome]) mvNotas[sai.nome].titular = false;
+                mvSubCount++;
+                document.getElementById('mv-subs-label').textContent = `Subs ${mvSubCount}/5`;
+                if (mvSubCount >= 5) document.getElementById('mv-btn-subs').disabled = true;
+                if (d) mvAddEvento({tipo:'sub', minuto:ev.minuto, time:'', time_id:0, jogador:entra.nome, saiu:sai.nome}, d.nome_casa, d.nome_fora, d.meu_time_id);
+            } else if (idx >= 0 && (mvBanco.length === 0 || mvSubCount >= 5)) {
+                mvTitulares.splice(idx, 1);
+            }
+        }
+
         mvUpdateNotas(ev, d.meu_time_id);
         mvAddEvento(ev, d.nome_casa, d.nome_fora, d.meu_time_id);
         mvRenderNotas();
@@ -1556,12 +1784,13 @@ trocarAba('elenco');
         // Preenche form de resultado
         const statsArr = Object.entries(mvNotas).filter(([,x]) => x.id > 0)
             .map(([,x]) => ({id:x.id, gols:x.gols||0, assists:x.assists||0, amarelos:x.amarelos||0, vermelhos:x.vermelhos||0, nota:+x.nota.toFixed(2)}));
-        document.getElementById('res-partida-id').value    = d.partida_id;
-        document.getElementById('res-gols-casa').value     = mvScore.casa;
-        document.getElementById('res-gols-fora').value     = mvScore.fora;
-        document.getElementById('res-stats-json').value    = JSON.stringify(statsArr);
-        document.getElementById('res-nova-formacao').value = mvFormacaoAtual;
-        document.getElementById('res-nova-tatica').value   = mvTaticaAtual;
+        document.getElementById('res-partida-id').value      = d.partida_id;
+        document.getElementById('res-gols-casa').value       = mvScore.casa;
+        document.getElementById('res-gols-fora').value       = mvScore.fora;
+        document.getElementById('res-stats-json').value      = JSON.stringify(statsArr);
+        document.getElementById('res-nova-formacao').value   = mvFormacaoAtual;
+        document.getElementById('res-nova-tatica').value     = mvTaticaAtual;
+        document.getElementById('res-lesionados-json').value = JSON.stringify(mvLesionados);
 
         document.getElementById('mv-end-popup').classList.remove('hidden');
     }
@@ -1581,7 +1810,7 @@ trocarAba('elenco');
     }
 
     window.mvSetTatica = function(t) {
-        if (!TAT_MOD[t]) return;
+        if (!['defensivo','normal','ataque'].includes(t)) return;
         mvTaticaAtual = t;
         mvUpdateTaticaBtns();
         const d = mvData(); if (!d) return;
@@ -1594,6 +1823,7 @@ trocarAba('elenco');
 
         mvMinuto = 0; mvPaused = false; mvScore = {casa:0,fora:0}; mvSpeed = 1; mvDelay = SPEEDS[1];
         mvEvtLog = [];
+        mvLesionados = [];
         clearTimeout(mvTimer);
 
         mvTaticaAtual = d.tatica_inicial || 'normal';

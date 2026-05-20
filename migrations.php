@@ -143,6 +143,31 @@ function runMigrations(PDO $pdo): void {
         }
     } catch (Exception $e) { error_log('EcoFut migration stats: ' . $e->getMessage()); }
 
+    // Colunas de potencial e lesões
+    try {
+        $hasPot = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ecofut_elenco' AND COLUMN_NAME = 'potencial'")->fetchColumn();
+        if (!$hasPot) {
+            $pdo->exec("ALTER TABLE ecofut_elenco
+                ADD COLUMN potencial      INT DEFAULT 70,
+                ADD COLUMN lesoes_rodadas INT DEFAULT 0");
+        }
+    } catch (Exception $e) { error_log('EcoFut migration potencial: ' . $e->getMessage()); }
+
+    // Tabela Copa
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS ecofut_copa (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            save_id INT NOT NULL,
+            fase ENUM('quartas','semifinal','final') NOT NULL,
+            time_casa_id INT NOT NULL,
+            time_fora_id INT NOT NULL,
+            gols_casa INT DEFAULT NULL,
+            gols_fora INT DEFAULT NULL,
+            status ENUM('agendada','jogada') DEFAULT 'agendada',
+            FOREIGN KEY (save_id) REFERENCES ecofut_saves(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    } catch (Exception $e) { error_log('EcoFut migration copa: ' . $e->getMessage()); }
+
     // Seed times se tabela estiver vazia ou com seed incompleto (< 20 times)
     try {
         $timesCount = (int)$pdo->query("SELECT COUNT(*) FROM ecofut_times")->fetchColumn();
