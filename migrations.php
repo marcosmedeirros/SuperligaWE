@@ -153,12 +153,12 @@ function runMigrations(PDO $pdo): void {
         }
     } catch (Exception $e) { error_log('EcoFut migration potencial: ' . $e->getMessage()); }
 
-    // Tabela Copa
+    // Tabela Copa do Brasil (5 fases)
     try {
         $pdo->exec("CREATE TABLE IF NOT EXISTS ecofut_copa (
             id INT AUTO_INCREMENT PRIMARY KEY,
             save_id INT NOT NULL,
-            fase ENUM('quartas','semifinal','final') NOT NULL,
+            fase ENUM('primeira_fase','oitavas','quartas','semifinal','final') NOT NULL,
             time_casa_id INT NOT NULL,
             time_fora_id INT NOT NULL,
             gols_casa INT DEFAULT NULL,
@@ -168,21 +168,31 @@ function runMigrations(PDO $pdo): void {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     } catch (Exception $e) { error_log('EcoFut migration copa: ' . $e->getMessage()); }
 
-    // Seed times se tabela estiver vazia ou com seed incompleto (< 20 times)
+    // Migra coluna fase da Copa se ainda estiver no formato antigo
+    try {
+        $colInfo = $pdo->query(
+            "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ecofut_copa' AND COLUMN_NAME = 'fase'"
+        )->fetchColumn();
+        if ($colInfo && strpos($colInfo, 'primeira_fase') === false) {
+            $pdo->exec("ALTER TABLE ecofut_copa MODIFY COLUMN fase
+                ENUM('primeira_fase','oitavas','quartas','semifinal','final') NOT NULL");
+        }
+    } catch (Exception $e) { error_log('EcoFut migration copa alter: ' . $e->getMessage()); }
+
+    // Seed times brasileiros reais se tabela estiver vazia ou incompleta (< 40 times)
     try {
         $timesCount = (int)$pdo->query("SELECT COUNT(*) FROM ecofut_times")->fetchColumn();
-        if ($timesCount < 20) {
-            // Limpa seed parcial para evitar inconsistência
+        if ($timesCount < 40) {
             if ($timesCount > 0) {
                 $pdo->exec("DELETE FROM ecofut_jogadores_base");
                 $pdo->exec("DELETE FROM ecofut_times");
             }
-            require_once __DIR__ . '/tools/seed_teams.php';
-            seedEcofutTimes($pdo);
+            require_once __DIR__ . '/tools/seed_brasil.php';
+            seedBrasil($pdo);
         }
     } catch (Exception $e) {
         error_log('EcoFut seed error: ' . $e->getMessage());
-        // Armazena erro na sessão para diagnóstico
         if (session_status() === PHP_SESSION_ACTIVE) {
             $_SESSION['ecofut_seed_erro'] = $e->getMessage();
         }
